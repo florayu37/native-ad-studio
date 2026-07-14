@@ -217,7 +217,7 @@ Return exactly 5 prompts, one per line, no numbering.`;
         ? `\nReal-time Google Trends data for "${offerName}" (US market, past 3 months):\n- Rising searches: ${trendsData.rising.join(', ') || 'N/A'}\n- Top searches: ${trendsData.top.join(', ') || 'N/A'}`
         : `\n(No live trends data — using general market knowledge. Add a SerpAPI key in Settings for real-time Google Trends.)`;
 
-      const prompt = `You are a native advertising strategist. Generate 5 specific, high-converting campaign angles for a native ad campaign targeting T14 markets (${T14_LABEL}).
+      const prompt = `You are a native advertising strategist. Generate 5 specific, high-converting campaign angles for a native ad campaign targeting T14 markets (${T14_LABEL}). Trends data is sourced from the US market.
 
 Offer: "${offerName}"${audience ? `\nTarget audience: ${audience}` : ''}${angle ? `\nExisting angle/key message: ${angle}` : ''}${landingPage ? `\nLanding page: ${landingPage}` : ''}${trendsContext}
 
@@ -732,7 +732,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
                     </div>
                     <p className="text-xs text-violet-400 mt-0.5">
                       {config.serpApiKey
-                        ? `Google Search Trends (T14: ${T14_LABEL}) → Claude analysis`
+                        ? `Google Search Trends (US) → Claude analysis`
                         : 'Claude generates trend-aware angles — add SerpAPI key in Settings for live Google Trends'}
                     </p>
                   </div>

@@ -9,7 +9,7 @@ An internal tool for Decide.co's creative team to develop native ad content pack
 ## What it does
 
 **Step 1 — Campaign Brief**
-Fill in offer details, target audience, landing page, and angle/key message. Optionally generate angle suggestions pulled from live Google Search Trends across T14 markets (US, UK, CA, AU, NZ, IE, ZA, IN, PH, SG, NG, GH, MY, HK).
+Fill in offer details, target audience, landing page, and angle/key message. Optionally generate angle suggestions pulled from live US Google Search Trends.
 
 **Step 2 — Headlines**
 - Paste client-provided Traffic Unit and Poll Style headlines
