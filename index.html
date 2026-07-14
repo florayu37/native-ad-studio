@@ -1,0 +1,1912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Native Ad Studio</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/smartcrop@2.0.5/smartcrop.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gifuct-js@2.1.2/dist/gifuct-js.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f1f5f9; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    .fade-in { animation: fadeIn 0.2s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    .spin { animation: spin 1s linear infinite; display: inline-block; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .char-ok { color: #10b981; }
+    .char-warn { color: #f59e0b; }
+    .char-over { color: #ef4444; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // ─── GEM SPEC ─────────────────────────────────────────────────────────────
+    // Gem Creative Specialist rules embedded as prompt templates
+
+    const GEM_TRAFFIC_PROMPT = (brief) => `You are a Creative Specialist for native advertising networks. Your task is to generate high-converting ad content.
+
+Campaign details:
+- Offer: ${brief.offerName}
+- Target audience: ${brief.audience}
+- Angle/message: ${brief.angle}
+${brief.landingPage ? `\n- Landing page: ${brief.landingPage}` : ''}
+
+Generate exactly 20 TRAFFIC UNIT HEADLINES following these rules:
+- Under 100 characters each
+- Use definitive statements, not descriptions
+- No inflammatory or conspiracy language
+- Vary sentence structure and length for A/B testing
+- Capitalize Every Word In Each Headline
+- No period at the end; allowed punctuation: comma, quotation marks, ?, —, :, (), []
+- Include 3–5 geo-personalized headlines using {{state}}, {{city}}, or {{state_code}} tokens where natural
+- High conversion intent, persuasive but ethical
+
+Return ONLY the 20 headlines, one per line, no numbering, bullets, or extra text.`;
+
+    const GEM_POLL_PROMPT = (brief) => `You are a Creative Specialist for native advertising networks. Your task is to generate high-converting ad content.
+
+Campaign details:
+- Offer: ${brief.offerName}
+- Target audience: ${brief.audience}
+- Angle/message: ${brief.angle}
+${brief.landingPage ? `\n- Landing page: ${brief.landingPage}` : ''}
+
+Generate exactly 15 POLL STYLE HEADLINES following these rules:
+- Under 100 characters each (including the answer choices)
+- Questions or pain-point-driven prompts that encourage engagement
+- Normal capitalization (not title case)
+- Simple — don't assume niche knowledge before clicking
+- Format: Question | Choice A | Choice B (etc.)
+- First 10: simple yes/no format, e.g. "Are you overpaying for homeowners insurance? | Yes | No"
+- Last 5: other choice types, e.g. "How much could you save on insurance? | Under $100 | $100–$300 | $300+"
+
+Return ONLY the 15 poll headlines, one per line, no numbering or bullets.`;
+
+    const GEM_DESCRIPTION_PROMPT = (brief) => `You are a Creative Specialist for native advertising networks.
+
+Campaign details:
+- Offer: ${brief.offerName}
+- Target audience: ${brief.audience}
+- Angle/message: ${brief.angle}${brief.landingPage ? `\n- Landing page: ${brief.landingPage}` : ''}
+
+Write exactly 1 UNIVERSAL DESCRIPTION TEXT:
+- Maximum 120 characters
+- Acts as a bridge between the ad headlines and the landing page content
+- Introduces the user to what they'll find on the page
+- Normal capitalization (not title case)
+- Professional and ethical — no invented data or unverified claims
+
+Return ONLY the description text, nothing else.`;
+
+    const GEM_IMAGE_PROMPT = (brief) => `You are a Creative Specialist for native advertising networks.
+
+Campaign details:
+- Offer: ${brief.offerName}
+- Target audience: ${brief.audience}
+- Angle/message: ${brief.angle}${brief.landingPage ? `\n- Landing page: ${brief.landingPage}` : ''}
+
+Generate exactly 5 IMAGE PROMPTS for AI image generation tools (Midjourney, DALL-E, etc.):
+- Each prompt should be detailed and specific enough to generate a compelling native ad thumbnail
+- Describe: subject, setting, lighting, composition, emotional tone, style
+- Prompts should complement the ad's angle and appeal to the target audience
+- Think clickable thumbnails: relatable faces, contrast, surprising moments, real-world scenes
+- Vary the visual approaches (lifestyle, close-up, scene-based, person-focused, symbolic)
+
+Format each as:
+[Concept Title] — [Detailed image generation prompt]
+
+Return exactly 5 prompts, one per line, no numbering.`;
+
+    // ─── T14 MARKETS ──────────────────────────────────────────────────────────
+    // Top 14 markets for native ad traffic (commonly used in the industry)
+    const T14_LABEL = 'US, UK, CA, AU, NZ, IE, ZA, IN, PH, SG, NG, GH, MY, HK';
+
+    // ─── HELPERS ──────────────────────────────────────────────────────────────
+
+    async function callClaude(prompt, apiKey) {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-5',
+          max_tokens: 3000,
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error?.message || `API error ${res.status}`);
+      }
+      const data = await res.json();
+      return data.content[0].text;
+    }
+
+    // ─── COVER IMAGE TITLE GENERATION ────────────────────────────────────────
+
+    // Resize processed image to a small JPEG thumbnail before sending to Claude
+    function thumbnailDataUrl(dataUrl, w = 320, h = 180) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const c = document.createElement('canvas');
+          c.width = w; c.height = h;
+          c.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(c.toDataURL('image/jpeg', 0.75));
+        };
+        img.src = dataUrl;
+      });
+    }
+
+    // Ask Claude Haiku (vision) for a 2-5 word cover title
+    async function generateImageTitle(dataUrl, isGif, apiKey) {
+      const thumb = await thumbnailDataUrl(dataUrl);
+      const base64 = thumb.split(',')[1];
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 20,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+              { type: 'text', text: 'Give this image a 2-5 word cover title in Title Case. Name recognizable public figures if present. Examples: "Trump Smiling", "Fuel Pump Close-Up", "Worried Senior Man". Return ONLY the title, nothing else.' }
+            ]
+          }]
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message);
+      let title = (data.content?.[0]?.text || '').trim().replace(/^["'`]|["'`.]$/g, '').trim();
+      if (isGif) title = title.replace(/\s+GIF$/i, '').trim() + ' GIF';
+      return title;
+    }
+
+    // ─── TRENDS + ANGLE SUGGESTIONS ──────────────────────────────────────────
+
+    // Fetch related queries from SerpAPI Google Trends (US, past 3 months)
+    async function fetchTrendsData(query, serpApiKey) {
+      const params = new URLSearchParams({
+        engine: 'google_trends',
+        q: query,
+        date: 'today 3-m',
+        data_type: 'RELATED_QUERIES',
+        geo: 'US',
+        api_key: serpApiKey,
+      });
+      const res = await fetch(`https://serpapi.com/search.json?${params}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error || `SerpAPI error ${res.status}`);
+      }
+      const data = await res.json();
+      const rising = (data.related_queries?.rising || []).slice(0, 10).map(q => q.query);
+      const top    = (data.related_queries?.top    || []).slice(0, 10).map(q => q.query);
+      return { rising, top };
+    }
+
+    // Generate angle suggestions via Claude, with optional real trends data injected
+    async function suggestAnglesViaClaude(offerName, audience, angle, landingPage, trendsData, anthropicKey, hasTrendsData) {
+      const trendsContext = hasTrendsData
+        ? `\nReal-time Google Trends data for "${offerName}" (US market, past 3 months):\n- Rising searches: ${trendsData.rising.join(', ') || 'N/A'}\n- Top searches: ${trendsData.top.join(', ') || 'N/A'}`
+        : `\n(No live trends data — using general market knowledge. Add a SerpAPI key in Settings for real-time Google Trends.)`;
+
+      const prompt = `You are a native advertising strategist. Generate 5 specific, high-converting campaign angles for a native ad campaign targeting T14 markets (${T14_LABEL}).
+
+Offer: "${offerName}"${audience ? `\nTarget audience: ${audience}` : ''}${angle ? `\nExisting angle/key message: ${angle}` : ''}${landingPage ? `\nLanding page: ${landingPage}` : ''}${trendsContext}
+
+Requirements:
+- Each angle must be specific enough that a copywriter can immediately write headlines from it
+- Ground each angle in a real consumer emotion, timing trigger, or trending concern
+- Vary the psychological hook (e.g. fear of loss, curiosity gap, social proof, cost savings, urgency, identity)
+- Angles should feel timely and grounded in what people are actually searching for
+${angle ? '- You may build on or diverge from the existing angle/key message to offer fresh alternatives' : ''}
+Format each angle exactly as:
+[Short title] — [One sentence describing the hook and why it resonates now]
+
+Return exactly 5 angles, one per line. No numbering, no extra text.`;
+
+      return callClaude(prompt, anthropicKey);
+    }
+
+    function centerCrop(img, targetW, targetH) {
+      const canvas = document.createElement('canvas');
+      canvas.width = targetW; canvas.height = targetH;
+      const ctx = canvas.getContext('2d');
+      const targetAspect = targetW / targetH;
+      const srcAspect = img.width / img.height;
+      let sx, sy, sw, sh;
+      if (srcAspect > targetAspect) {
+        sh = img.height; sw = img.height * targetAspect;
+        sy = 0; sx = (img.width - sw) / 2;
+      } else {
+        sw = img.width; sh = img.width / targetAspect;
+        sx = 0; sy = (img.height - sh) / 2;
+      }
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, targetW, targetH);
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, targetW, targetH);
+      return canvas;
+    }
+
+    function processImageToJPEG(file, targetW = 1600, targetH = 900) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = async () => {
+          try {
+            let canvas;
+            if (window.smartcrop) {
+              // Smart content-aware crop
+              const result = await smartcrop.crop(img, { width: targetW, height: targetH });
+              const c = result.topCrop;
+              canvas = document.createElement('canvas');
+              canvas.width = targetW; canvas.height = targetH;
+              const ctx = canvas.getContext('2d');
+              ctx.fillStyle = '#000';
+              ctx.fillRect(0, 0, targetW, targetH);
+              ctx.drawImage(img, c.x, c.y, c.width, c.height, 0, 0, targetW, targetH);
+            } else {
+              // Fallback: center crop
+              canvas = centerCrop(img, targetW, targetH);
+            }
+            URL.revokeObjectURL(url);
+            resolve(canvas.toDataURL('image/jpeg', 0.92));
+          } catch {
+            // If smartcrop errors, fall back gracefully
+            const canvas = centerCrop(img, targetW, targetH);
+            URL.revokeObjectURL(url);
+            resolve(canvas.toDataURL('image/jpeg', 0.92));
+          }
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Failed to load image')); };
+        img.src = url;
+      });
+    }
+
+    // Draw the white glass play button onto an existing canvas context
+    function drawPlayButton(ctx, w, h) {
+      const cx = w / 2, cy = h / 2;
+      const radius = Math.min(w, h) * 0.13;
+      const borderW = radius * 0.09;
+
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.55)';
+      ctx.shadowBlur = radius * 0.55;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius + borderW * 0.5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0)';
+      ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.lineWidth = borderW;
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius - borderW * 0.5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fill();
+      ctx.restore();
+
+      const triH = radius * 0.48, triW = triH * 0.88, ox = radius * 0.07;
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.18)';
+      ctx.shadowBlur = radius * 0.12;
+      ctx.shadowOffsetX = radius * 0.03;
+      ctx.shadowOffsetY = radius * 0.03;
+      ctx.beginPath();
+      ctx.moveTo(cx + triW * 0.7 + ox, cy);
+      ctx.lineTo(cx - triW * 0.3 + ox, cy - triH);
+      ctx.lineTo(cx - triW * 0.3 + ox, cy + triH);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function addPlayButtonOverlay(dataUrl) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width; canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          drawPlayButton(ctx, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', 0.92));
+        };
+        img.src = dataUrl;
+      });
+    }
+
+    // Decode an animated GIF into frames using gifuct-js
+    async function getAnimatedGIFData(file) {
+      if (file.type !== 'image/gif' && !file.name.toLowerCase().endsWith('.gif')) return null;
+      try {
+        const buffer = await file.arrayBuffer();
+        // gifuct-js may expose as window.gifuct, window.gifuctJs, or globals directly
+        const lib = window.gifuct || window.gifuctJs || window;
+        const _parseGIF = lib.parseGIF || window.parseGIF;
+        const _decompress = lib.decompressFrames || window.decompressFrames;
+        if (!_parseGIF || !_decompress) return null;
+        const parsed = _parseGIF(buffer);
+        const frames = _decompress(parsed, true);
+        return frames.length > 1 ? { parsed, frames } : null;
+      } catch { return null; }
+    }
+
+    // Process an animated GIF: smart-crop all frames and re-encode
+    async function processAnimatedGIF(gifData, targetW, targetH, withPlayButton = false) {
+      const { parsed, frames } = gifData;
+      const srcW = parsed.lsd.width;
+      const srcH = parsed.lsd.height;
+
+      // Build first frame canvas for smartcrop analysis
+      const firstCanvas = document.createElement('canvas');
+      firstCanvas.width = srcW; firstCanvas.height = srcH;
+      const firstCtx = firstCanvas.getContext('2d');
+      if (frames[0]?.patch) {
+        firstCtx.putImageData(
+          new ImageData(new Uint8ClampedArray(frames[0].patch), frames[0].dims.width, frames[0].dims.height),
+          frames[0].dims.left, frames[0].dims.top
+        );
+      }
+
+      // Determine crop coords
+      let crop;
+      if (window.smartcrop) {
+        const result = await smartcrop.crop(firstCanvas, { width: targetW, height: targetH });
+        crop = result.topCrop;
+      } else {
+        const ta = targetW / targetH, sa = srcW / srcH;
+        if (sa > ta) { crop = { x: (srcW - srcH * ta) / 2, y: 0, width: srcH * ta, height: srcH }; }
+        else { crop = { x: 0, y: (srcH - srcW / ta) / 2, width: srcW, height: srcW / ta }; }
+      }
+
+      // Inline gif.js worker to avoid CORS issues when opened locally
+      let workerScript;
+      try {
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js');
+        const blob = await resp.blob();
+        workerScript = URL.createObjectURL(blob);
+      } catch { workerScript = 'https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js'; }
+
+      return new Promise((resolve, reject) => {
+        const gif = new GIF({ workers: 2, quality: 10, width: targetW, height: targetH, workerScript });
+
+        // Composite canvas (accumulates disposal correctly)
+        const compCanvas = document.createElement('canvas');
+        compCanvas.width = srcW; compCanvas.height = srcH;
+        const compCtx = compCanvas.getContext('2d');
+
+        // Output canvas
+        const outCanvas = document.createElement('canvas');
+        outCanvas.width = targetW; outCanvas.height = targetH;
+        const outCtx = outCanvas.getContext('2d');
+
+        frames.forEach((frame, i) => {
+          if (i > 0 && frames[i - 1].disposalType === 2) compCtx.clearRect(0, 0, srcW, srcH);
+          compCtx.putImageData(
+            new ImageData(new Uint8ClampedArray(frame.patch), frame.dims.width, frame.dims.height),
+            frame.dims.left, frame.dims.top
+          );
+          outCtx.clearRect(0, 0, targetW, targetH);
+          outCtx.drawImage(compCanvas, crop.x, crop.y, crop.width, crop.height, 0, 0, targetW, targetH);
+          if (withPlayButton) drawPlayButton(outCtx, targetW, targetH);
+          gif.addFrame(outCanvas, { delay: (frame.delay || 10) * 10, copy: true });
+        });
+
+        gif.on('finished', blob => {
+          if (workerScript.startsWith('blob:')) URL.revokeObjectURL(workerScript);
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.readAsDataURL(blob);
+        });
+        gif.on('error', reject);
+        gif.render();
+      });
+    }
+
+    // Unified image processor — returns { dataUrl, ext, gifData }
+    async function processImage(file) {
+      const gifData = await getAnimatedGIFData(file);
+      if (gifData) {
+        const dataUrl = await processAnimatedGIF(gifData, 1600, 900);
+        return { dataUrl, ext: 'gif', gifData };
+      }
+      const dataUrl = await processImageToJPEG(file);
+      return { dataUrl, ext: 'jpg', gifData: null };
+    }
+
+    function dataURLtoBlob(dataUrl) {
+      const arr = dataUrl.split(',');
+      const mime = arr[0].match(/:(.*?);/)[1];
+      const bstr = atob(arr[1]);
+      let n = bstr.length; const u8 = new Uint8Array(n);
+      while (n--) u8[n] = bstr.charCodeAt(n);
+      return new Blob([u8], { type: mime });
+    }
+
+    async function uploadToDrive(fileName, dataUrl, folderId, token) {
+      const blob = dataURLtoBlob(dataUrl);
+      const meta = JSON.stringify({ name: fileName, mimeType: 'image/jpeg', parents: [folderId] });
+      const form = new FormData();
+      form.append('metadata', new Blob([meta], { type: 'application/json' }));
+      form.append('file', blob);
+      const res = await fetch(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink',
+        { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form }
+      );
+      if (!res.ok) throw new Error('Drive upload failed');
+      return res.json();
+    }
+
+    function uid() { return Math.random().toString(36).slice(2, 9); }
+
+    function charClass(len, max) {
+      if (len === 0) return '';
+      if (len <= max * 0.8) return 'char-ok';
+      if (len <= max) return 'char-warn';
+      return 'char-over';
+    }
+
+    // ─── UI PRIMITIVES ───────────────────────────────────────────────────────
+
+    function Badge({ children, color = 'slate' }) {
+      const colors = {
+        slate: 'bg-slate-100 text-slate-600',
+        indigo: 'bg-indigo-100 text-indigo-700',
+        emerald: 'bg-emerald-100 text-emerald-700',
+        amber: 'bg-amber-100 text-amber-700',
+        violet: 'bg-violet-100 text-violet-700',
+        red: 'bg-red-100 text-red-600',
+      };
+      return <span className={`inline-block text-xs px-2 py-0.5 rounded-full font-medium ${colors[color]}`}>{children}</span>;
+    }
+
+    function Btn({ onClick, disabled, children, variant = 'primary', size = 'md', className = '' }) {
+      const base = 'inline-flex items-center gap-1.5 font-medium rounded-lg transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed';
+      const sizes = { sm: 'text-xs px-3 py-1.5', md: 'text-sm px-4 py-2', lg: 'text-sm px-5 py-2.5' };
+      const variants = {
+        primary: 'bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500 shadow-sm',
+        secondary: 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 focus:ring-slate-300',
+        ghost: 'text-slate-500 hover:text-slate-700 hover:bg-slate-100 focus:ring-slate-300',
+        success: 'bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-500 shadow-sm',
+        danger: 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 focus:ring-red-300',
+        dark: 'bg-slate-800 text-white hover:bg-slate-900 focus:ring-slate-500 shadow-sm',
+        violet: 'bg-violet-600 text-white hover:bg-violet-700 focus:ring-violet-500 shadow-sm',
+      };
+      return (
+        <button onClick={onClick} disabled={disabled} className={`${base} ${sizes[size]} ${variants[variant]} ${className}`}>
+          {children}
+        </button>
+      );
+    }
+
+    function Input({ label, value, onChange, placeholder, type = 'text', hint }) {
+      return (
+        <div>
+          {label && <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>}
+          <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white placeholder-slate-300" />
+          {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
+        </div>
+      );
+    }
+
+    function Textarea({ label, value, onChange, placeholder, rows = 3, hint }) {
+      return (
+        <div>
+          {label && <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>}
+          <textarea value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={rows}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white placeholder-slate-300 resize-none" />
+          {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
+        </div>
+      );
+    }
+
+    function Select({ label, value, onChange, options }) {
+      return (
+        <div>
+          {label && <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>}
+          <select value={value} onChange={e => onChange(e.target.value)}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+            {options.map(o => <option key={o.value || o} value={o.value || o}>{o.label || o}</option>)}
+          </select>
+        </div>
+      );
+    }
+
+    function Card({ children, className = '' }) {
+      return <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm ${className}`}>{children}</div>;
+    }
+
+    function Spinner() { return <span className="spin">↻</span>; }
+
+    function Tab({ active, onClick, children }) {
+      return (
+        <button onClick={onClick}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            active ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+          }`}>
+          {children}
+        </button>
+      );
+    }
+
+    // ─── STEP NAV ────────────────────────────────────────────────────────────
+
+    function StepNav({ current, maxReached, onChange }) {
+      const steps = [
+        { n: 1, label: 'Brief' },
+        { n: 2, label: 'Headlines' },
+        { n: 3, label: 'Images' },
+        { n: 4, label: 'Export' },
+      ];
+      return (
+        <div className="flex items-center">
+          {steps.map((s, i) => (
+            <React.Fragment key={s.n}>
+              <button onClick={() => s.n <= maxReached && onChange(s.n)} disabled={s.n > maxReached}
+                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all ${
+                  current === s.n ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' :
+                  s.n < current ? 'text-emerald-600 hover:bg-emerald-50 cursor-pointer' :
+                  s.n <= maxReached ? 'text-slate-500 hover:bg-slate-100 cursor-pointer' : 'text-slate-300 cursor-not-allowed'
+                }`}>
+                <span className={`w-5 h-5 rounded-full text-xs flex items-center justify-center border-2 font-bold flex-shrink-0 ${
+                  current === s.n ? 'border-white/60 text-white' :
+                  s.n < current ? 'border-emerald-400 text-emerald-600' : 'border-current'
+                }`}>
+                  {s.n < current ? '✓' : s.n}
+                </span>
+                <span className="hidden sm:inline">{s.label}</span>
+              </button>
+              {i < steps.length - 1 && <div className={`flex-1 h-px mx-1 transition-colors ${s.n < current ? 'bg-emerald-300' : 'bg-slate-200'}`} />}
+            </React.Fragment>
+          ))}
+        </div>
+      );
+    }
+
+    // ─── SETTINGS MODAL ──────────────────────────────────────────────────────
+
+    function SettingsModal({ config, onSave, onClose }) {
+      const [local, setLocal] = useState({ ...config });
+      const set = (k, v) => setLocal(p => ({ ...p, [k]: v }));
+      return (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg fade-in">
+            <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">Settings</h2>
+                <p className="text-xs text-slate-500 mt-0.5">API keys saved in your browser only</p>
+              </div>
+              {onClose && <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>}
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <Input label="Anthropic API Key" value={local.anthropicKey} onChange={v => set('anthropicKey', v)}
+                placeholder="sk-ant-api03-..." type="password" hint="Optional — required for AI headline, image prompt, and angle generation" />
+              <div className="border-t border-slate-100 pt-4">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Google Search Trends (optional)</p>
+                <Input label="SerpAPI Key" value={local.serpApiKey} onChange={v => set('serpApiKey', v)}
+                  placeholder="your-serpapi-key" type="password"
+                  hint="serpapi.com — unlocks real-time Google Trends data for angle suggestions" />
+                <div className="mt-2 bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700 leading-relaxed">
+                  Without a SerpAPI key, angle suggestions still work using Claude's market knowledge (no live data).
+                </div>
+              </div>
+              <div className="border-t border-slate-100 pt-4">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Google Drive (optional)</p>
+                <div className="space-y-3">
+                  <Input label="Google OAuth Client ID" value={local.googleClientId} onChange={v => set('googleClientId', v)}
+                    placeholder="123456789-abc.apps.googleusercontent.com"
+                    hint="Google Cloud Console → APIs & Services → Credentials" />
+
+                </div>
+                <div className="mt-3 bg-amber-50 border border-amber-100 rounded-xl p-3 text-xs text-amber-700 leading-relaxed">
+                  <strong>Google setup:</strong> Google Cloud Console → Enable Drive API → Create OAuth 2.0 Web Client → add your app URL to <em>Authorized JavaScript origins</em>.
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-100">
+              <Btn onClick={() => { localStorage.setItem('nads_cfg', JSON.stringify(local)); onSave(local); }} className="w-full justify-center" size="lg">
+                Save Settings
+              </Btn>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ─── STEP 1: BRIEF ───────────────────────────────────────────────────────
+
+    function Step1({ brief, onChange, onNext, config }) {
+      const [trendsLoading, setTrendsLoading] = useState(false);
+      const [trendsError, setTrendsError] = useState('');
+      const [suggestions, setSuggestions] = useState([]);
+
+      const valid = brief.offerName.trim();
+
+      const handleSuggestAngles = async () => {
+        if (!config.anthropicKey) {
+          setTrendsError('Anthropic API key required — add it in Settings to generate angle suggestions.');
+          return;
+        }
+        if (!brief.offerName.trim()) {
+          setTrendsError('Enter an Offer Name first.');
+          return;
+        }
+        setTrendsLoading(true);
+        setTrendsError('');
+        setSuggestions([]);
+        try {
+          let trendsData = { rising: [], top: [] };
+          let hasTrendsData = false;
+          if (config.serpApiKey) {
+            try {
+              trendsData = await fetchTrendsData(brief.offerName, config.serpApiKey);
+              hasTrendsData = true;
+            } catch (e) {
+              // SerpAPI failed — fall back to Claude knowledge silently
+              console.warn('Google Trends fetch failed:', e.message);
+            }
+          }
+          const raw = await suggestAnglesViaClaude(brief.offerName, brief.audience, brief.angle, brief.landingPage, trendsData, config.anthropicKey, hasTrendsData);
+          const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 5 && l.includes('—'));
+          setSuggestions(lines.slice(0, 5));
+        } catch (e) {
+          setTrendsError(e.message);
+        } finally {
+          setTrendsLoading(false);
+        }
+      };
+
+      return (
+        <div className="fade-in space-y-6">
+          <div>
+            <h2 className="text-xl font-bold text-slate-800">Campaign Brief</h2>
+            <p className="text-sm text-slate-500 mt-1">This drives all Gem AI generation — headlines, descriptions, and image prompts.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <Input label="Offer Name *" value={brief.offerName} onChange={v => onChange({ ...brief, offerName: v })} placeholder="e.g. HomeShield Insurance" />
+            </div>
+            <div className="sm:col-span-2">
+              <Input label="Direct Landing Page URL" value={brief.landingPage} onChange={v => onChange({ ...brief, landingPage: v })}
+                placeholder="https://..." hint="Recommended — Gem analyzes the page to align content with your offer" />
+            </div>
+            <Input label="RA(s)" value={brief.ra} onChange={v => onChange({ ...brief, ra: v })} placeholder="RA name(s)" />
+            <Input label="Locker Link(s)" value={brief.lockerLink} onChange={v => onChange({ ...brief, lockerLink: v })} placeholder="https://..." />
+            <div className="sm:col-span-2">
+              <Textarea label="Target Audience" value={brief.audience} onChange={v => onChange({ ...brief, audience: v })}
+                placeholder="e.g. US homeowners aged 45–65 concerned about rising insurance premiums" rows={2} />
+            </div>
+
+            {/* ── Angle field + Trends Suggestions ── */}
+            <div className="sm:col-span-2 space-y-3">
+              <Textarea label="Angle / Key Message" value={brief.angle} onChange={v => onChange({ ...brief, angle: v })}
+                placeholder="e.g. Shock/curiosity angle — most homeowners are overpaying by $500+/year and don't know it" rows={3} />
+
+              {/* Trends suggestion panel */}
+              <div className="bg-gradient-to-br from-violet-50 to-indigo-50 border border-violet-100 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-violet-800">✦ Suggest Angles from Trends</span>
+                      {config.serpApiKey
+                        ? <span className="text-xs bg-emerald-100 text-emerald-700 font-medium px-2 py-0.5 rounded-full">Live data</span>
+                        : <span className="text-xs bg-slate-100 text-slate-500 font-medium px-2 py-0.5 rounded-full">AI knowledge</span>
+                      }
+                    </div>
+                    <p className="text-xs text-violet-400 mt-0.5">
+                      {config.serpApiKey
+                        ? `Google Search Trends (T14: ${T14_LABEL}) → Claude analysis`
+                        : 'Claude generates trend-aware angles — add SerpAPI key in Settings for live Google Trends'}
+                    </p>
+                  </div>
+                  <Btn onClick={handleSuggestAngles} disabled={trendsLoading || !brief.offerName.trim()} size="sm" variant="violet" className="flex-shrink-0">
+                    {trendsLoading ? <><Spinner /> Analyzing...</> : '✦ Suggest (5)'}
+                  </Btn>
+                </div>
+
+                {trendsError && (
+                  <p className="text-xs text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-lg">{trendsError}</p>
+                )}
+
+                {!brief.offerName.trim() && !suggestions.length && !trendsLoading && (
+                  <p className="text-xs text-violet-300 italic">Enter an offer name above to enable suggestions</p>
+                )}
+
+                {suggestions.length > 0 && (
+                  <div className="space-y-2 fade-in">
+                    <p className="text-xs text-violet-500 font-medium">Click any angle to use it as your Angle / Key Message ↑</p>
+                    {suggestions.map((s, i) => {
+                      const dashIdx = s.indexOf('—');
+                      const title = dashIdx > -1 ? s.slice(0, dashIdx).trim() : s;
+                      const desc  = dashIdx > -1 ? s.slice(dashIdx + 1).trim() : '';
+                      return (
+                        <button key={i} onClick={() => onChange({ ...brief, angle: s })}
+                          className={`w-full text-left p-3 bg-white border rounded-xl transition-all fade-in ${
+                            brief.angle === s
+                              ? 'border-violet-400 ring-1 ring-violet-300 bg-violet-50'
+                              : 'border-slate-200 hover:border-violet-300 hover:bg-violet-50/60'
+                          }`}>
+                          <span className="text-sm font-semibold text-violet-700 block">{title}</span>
+                          {desc && <span className="text-xs text-slate-500 mt-0.5 block leading-relaxed">{desc}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <Btn onClick={onNext} disabled={!valid} size="lg">Next: Headlines →</Btn>
+          </div>
+        </div>
+      );
+    }
+
+    // ─── HEADLINE ROW ────────────────────────────────────────────────────────
+
+    function HeadlineRow({ text, source, isSelected, onToggle, onEdit }) {
+      const len = text.length;
+      return (
+        <div onClick={onToggle}
+          className={`flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-all cursor-pointer ${
+            isSelected ? 'border-indigo-200 bg-indigo-50' : 'border-slate-200 bg-white hover:border-slate-300'
+          }`}>
+          <div className={`w-5 h-5 rounded flex-shrink-0 mt-0.5 border-2 flex items-center justify-center text-xs font-bold transition-colors ${
+            isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-300'
+          }`}>
+            {isSelected && '✓'}
+          </div>
+          <span className="text-sm text-slate-700 flex-1 leading-snug">{text}</span>
+          <span className={`text-xs font-mono flex-shrink-0 mt-0.5 ${charClass(len, 100)}`}>{len}</span>
+          <Badge color={source === 'client' ? 'slate' : source === 'traffic' ? 'indigo' : 'violet'}>
+            {source === 'client' ? 'Client' : source === 'traffic' ? 'Traffic' : 'Poll'}
+          </Badge>
+          <button onClick={e => { e.stopPropagation(); onEdit(); }} className="text-slate-300 hover:text-slate-500 text-sm flex-shrink-0 mt-0.5">✎</button>
+        </div>
+      );
+    }
+
+    function HeadlineEditor({ value, onSave, onCancel }) {
+      const [text, setText] = useState(value);
+      const ref = useRef();
+      useEffect(() => { ref.current?.focus(); }, []);
+      return (
+        <div className="flex items-center gap-2 flex-1" onClick={e => e.stopPropagation()}>
+          <input ref={ref} value={text} onChange={e => setText(e.target.value)}
+            className="flex-1 text-sm border border-indigo-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            onKeyDown={e => { if (e.key === 'Enter') onSave(text); if (e.key === 'Escape') onCancel(); }} />
+          <span className={`text-xs font-mono ${charClass(text.length, 100)}`}>{text.length}/100</span>
+          <button onClick={() => onSave(text)} className="text-xs text-emerald-600 font-medium hover:text-emerald-700">Save</button>
+          <button onClick={onCancel} className="text-xs text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+      );
+    }
+
+    // ─── STEP 2: HEADLINES ───────────────────────────────────────────────────
+
+    function Step2({ brief, state, setState, config, onNext, onBack }) {
+      const { clientTrafficText, clientPollText, trafficHeadlines, pollHeadlines, universalDesc, selected, editingKey } = state;
+      const [activeTab, setActiveTab] = useState('traffic');
+      const [loadingTraffic, setLoadingTraffic] = useState(false);
+      const [loadingPoll, setLoadingPoll] = useState(false);
+      const [loadingAll, setLoadingAll] = useState(false);
+      const [error, setError] = useState('');
+
+      const clientTrafficList = (clientTrafficText || '').split('\n').map(h => h.trim()).filter(Boolean);
+      const clientPollList    = (clientPollText    || '').split('\n').map(h => h.trim()).filter(Boolean);
+
+      const allItems = [
+        ...clientTrafficList.map(t => ({ text: t, source: 'client_traffic', key: `ct_${t}` })),
+        ...clientPollList.map(t    => ({ text: t, source: 'client_poll',    key: `cp_${t}` })),
+        ...trafficHeadlines.map((t, i) => ({ text: t, source: 'traffic', key: `tr_${i}` })),
+        ...pollHeadlines.map((t, i)    => ({ text: t, source: 'poll',    key: `po_${i}` })),
+      ];
+
+      const generateTraffic = async () => {
+        if (!config.anthropicKey) { setError('Add your Anthropic API key in Settings first.'); return; }
+        setLoadingTraffic(true); setError('');
+        try {
+          const raw = await callClaude(GEM_TRAFFIC_PROMPT(brief), config.anthropicKey);
+          const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 5);
+          setState(p => ({ ...p, trafficHeadlines: lines }));
+        } catch (e) { setError(e.message); }
+        finally { setLoadingTraffic(false); }
+      };
+
+      const generatePoll = async () => {
+        if (!config.anthropicKey) { setError('Add your Anthropic API key in Settings first.'); return; }
+        setLoadingPoll(true); setError('');
+        try {
+          const raw = await callClaude(GEM_POLL_PROMPT(brief), config.anthropicKey);
+          const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 5);
+          setState(p => ({ ...p, pollHeadlines: lines }));
+        } catch (e) { setError(e.message); }
+        finally { setLoadingPoll(false); }
+      };
+
+      const generateAll = async () => {
+        if (!config.anthropicKey) { setError('Add your Anthropic API key in Settings first.'); return; }
+        setLoadingAll(true); setError('');
+        try {
+          const [trafficRaw, pollRaw, descRaw] = await Promise.all([
+            callClaude(GEM_TRAFFIC_PROMPT(brief), config.anthropicKey),
+            callClaude(GEM_POLL_PROMPT(brief), config.anthropicKey),
+            callClaude(GEM_DESCRIPTION_PROMPT(brief), config.anthropicKey),
+          ]);
+          setState(p => ({
+            ...p,
+            trafficHeadlines: trafficRaw.split('\n').map(l => l.trim()).filter(l => l.length > 5),
+            pollHeadlines: pollRaw.split('\n').map(l => l.trim()).filter(l => l.length > 5),
+            universalDesc: descRaw.trim().slice(0, 200),
+          }));
+        } catch (e) { setError(e.message); }
+        finally { setLoadingAll(false); }
+      };
+
+      const toggleSelect = (key, text) => {
+        setState(p => ({
+          ...p,
+          selected: p.selected.some(s => s.key === key)
+            ? p.selected.filter(s => s.key !== key)
+            : [...p.selected, { key, text }],
+        }));
+      };
+
+      const saveEdit = (oldKey, newText) => {
+        setState(p => {
+          const updated = { ...p, editingKey: null };
+          if (oldKey.startsWith('tr_')) {
+            const i = parseInt(oldKey.slice(3));
+            const arr = [...p.trafficHeadlines]; arr[i] = newText;
+            updated.trafficHeadlines = arr;
+          } else if (oldKey.startsWith('po_')) {
+            const i = parseInt(oldKey.slice(3));
+            const arr = [...p.pollHeadlines]; arr[i] = newText;
+            updated.pollHeadlines = arr;
+          }
+          updated.selected = p.selected.map(s => s.key === oldKey ? { ...s, text: newText } : s);
+          return updated;
+        });
+      };
+
+      const trafficItems = allItems.filter(i => i.source === 'client_traffic' || i.source === 'traffic');
+      const pollItems    = allItems.filter(i => i.source === 'client_poll'    || i.source === 'poll');
+      const displayItems = activeTab === 'traffic' ? trafficItems : pollItems;
+      const isLoading = loadingAll || (activeTab === 'traffic' ? loadingTraffic : loadingPoll);
+      const anyLoading = loadingAll || loadingTraffic || loadingPoll;
+
+      return (
+        <div className="fade-in space-y-5">
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-slate-800">Headlines</h2>
+              <p className="text-sm text-slate-500 mt-1">Gem generates 20 Traffic Unit + 15 Poll Style headlines. Select all to include.</p>
+            </div>
+            <Badge color={state.selected.length > 0 ? 'indigo' : 'slate'}>{state.selected.length} selected</Badge>
+          </div>
+
+          {/* Client input — two separate boxes */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Textarea label="Client Traffic Unit Headlines (one per line)" value={clientTrafficText}
+              onChange={v => setState(p => ({ ...p, clientTrafficText: v }))}
+              placeholder={"Paste traffic headlines here...\n\nThis Simple Trick Saves Homeowners $500\nDoctors Won't Tell You This"}
+              rows={4} hint={`${clientTrafficList.length} headline${clientTrafficList.length !== 1 ? 's' : ''} detected`} />
+            <Textarea label="Client Poll Style Headlines (one per line)" value={clientPollText}
+              onChange={v => setState(p => ({ ...p, clientPollText: v }))}
+              placeholder={"Paste poll headlines here...\n\nAre you overpaying for insurance? | Yes | No\nHow much could you save? | Under $100 | $100–$300 | $300+"}
+              rows={4} hint={`${clientPollList.length} headline${clientPollList.length !== 1 ? 's' : ''} detected`} />
+          </div>
+
+          {/* Generate buttons */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <Btn onClick={generateAll} disabled={anyLoading} variant="primary" size="md">
+              {loadingAll ? <><Spinner /> Generating All...</> : '✦ Generate All (Traffic + Poll + Description)'}
+            </Btn>
+            <span className="text-xs text-slate-400">or generate separately:</span>
+            <Btn onClick={generateTraffic} disabled={anyLoading} variant="secondary" size="sm">
+              {loadingTraffic ? <><Spinner /> Traffic...</> : 'Traffic Unit (20)'}
+            </Btn>
+            <Btn onClick={generatePoll} disabled={anyLoading} variant="secondary" size="sm">
+              {loadingPoll ? <><Spinner /> Poll...</> : 'Poll Style (15)'}
+            </Btn>
+          </div>
+
+          {error && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+
+          {/* Universal Description */}
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <label className="text-sm font-medium text-slate-700">Universal Description</label>
+              <Badge color="amber">max 120 chars</Badge>
+              {universalDesc && <span className={`text-xs font-mono ${charClass(universalDesc.length, 120)}`}>{universalDesc.length}/120</span>}
+            </div>
+            <input value={universalDesc} onChange={e => setState(p => ({ ...p, universalDesc: e.target.value }))}
+              placeholder="Acts as a bridge between your headlines and landing page..."
+              maxLength={150}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white placeholder-slate-300" />
+          </div>
+
+          {/* Tabs + Selection */}
+          {(trafficItems.length > 0 || pollItems.length > 0) && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-200">
+                <div className="flex">
+                  <Tab active={activeTab === 'traffic'} onClick={() => setActiveTab('traffic')}>
+                    Traffic Unit <Badge color={activeTab === 'traffic' ? 'indigo' : 'slate'}>{trafficItems.length}</Badge>
+                  </Tab>
+                  <Tab active={activeTab === 'poll'} onClick={() => setActiveTab('poll')}>
+                    Poll Style <Badge color={activeTab === 'poll' ? 'violet' : 'slate'}>{pollItems.length}</Badge>
+                  </Tab>
+                </div>
+                <div className="flex gap-2 pb-1">
+                  <Btn size="sm" variant="ghost" onClick={() => {
+                    const toAdd = displayItems.filter(i => !state.selected.some(s => s.key === i.key));
+                    setState(p => ({ ...p, selected: [...p.selected, ...toAdd.map(i => ({ key: i.key, text: i.text }))] }));
+                  }}>All</Btn>
+                  <Btn size="sm" variant="ghost" onClick={() => {
+                    const keysToRemove = new Set(displayItems.map(i => i.key));
+                    setState(p => ({ ...p, selected: p.selected.filter(s => !keysToRemove.has(s.key)) }));
+                  }}>None</Btn>
+                </div>
+              </div>
+
+              {displayItems.length === 0 ? (
+                <div className="border-2 border-dashed border-slate-200 rounded-xl py-10 text-center text-slate-400 text-sm">
+                  {isLoading ? <><Spinner /> Generating...</> : 'Click Generate to create headlines'}
+                </div>
+              ) : (
+                <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
+                  {displayItems.map(item => {
+                    const isSelected = state.selected.some(s => s.key === item.key);
+                    const isEditing = editingKey === item.key;
+                    return (
+                      <div key={item.key}
+                        className={`flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-all cursor-pointer ${
+                          isSelected ? 'border-indigo-200 bg-indigo-50' : 'border-slate-200 bg-white hover:border-slate-300'
+                        }`}
+                        onClick={() => !isEditing && toggleSelect(item.key, item.text)}>
+                        <div className={`w-5 h-5 rounded flex-shrink-0 mt-0.5 border-2 flex items-center justify-center text-xs font-bold transition-colors ${
+                          isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-300'
+                        }`}>
+                          {isSelected && '✓'}
+                        </div>
+                        {isEditing ? (
+                          <HeadlineEditor value={item.text}
+                            onSave={newText => saveEdit(item.key, newText)}
+                            onCancel={() => setState(p => ({ ...p, editingKey: null }))} />
+                        ) : (
+                          <>
+                            <span className="text-sm text-slate-700 flex-1 leading-snug">{item.text}</span>
+                            <span className={`text-xs font-mono flex-shrink-0 mt-0.5 ${charClass(item.text.length, 100)}`}>{item.text.length}</span>
+                            <Badge color={item.source.startsWith('client') ? 'slate' : item.source === 'traffic' ? 'indigo' : 'violet'}>
+                              {item.source === 'client_traffic' ? 'Client' : item.source === 'client_poll' ? 'Client' : item.source === 'traffic' ? 'Traffic' : 'Poll'}
+                            </Badge>
+                            <button onClick={e => { e.stopPropagation(); setState(p => ({ ...p, editingKey: item.key })); }}
+                              className="text-slate-300 hover:text-slate-500 text-sm flex-shrink-0 mt-0.5">✎</button>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex justify-between pt-2">
+            <Btn onClick={onBack} variant="ghost">← Back</Btn>
+            <Btn onClick={onNext} disabled={state.selected.length === 0} size="lg">Next: Images →</Btn>
+          </div>
+        </div>
+      );
+    }
+
+    // ─── STEP 3: IMAGES ──────────────────────────────────────────────────────
+
+    function Step3({ brief, state, setState, config, onNext, onBack }) {
+      const { images, imagePrompts, accessToken, createPlayVariations } = state;
+      const [loadingPrompts, setLoadingPrompts] = useState(false);
+      const [processing, setProcessing] = useState(false);
+      const [driveStatus, setDriveStatus] = useState({});
+      const [promptError, setPromptError] = useState('');
+      const [driveError, setDriveError] = useState('');
+      const [folderId, setFolderId] = useState('');
+      const tokenClientRef = useRef(null);
+      const fileRef = useRef();
+
+      useEffect(() => {
+        if (!config.googleClientId) return;
+        const check = setInterval(() => {
+          if (window.google?.accounts?.oauth2) {
+            clearInterval(check);
+            tokenClientRef.current = google.accounts.oauth2.initTokenClient({
+              client_id: config.googleClientId,
+              scope: 'https://www.googleapis.com/auth/drive.file',
+              callback: resp => { if (resp.access_token) setState(p => ({ ...p, accessToken: resp.access_token })); },
+            });
+          }
+        }, 300);
+        return () => clearInterval(check);
+      }, [config.googleClientId]);
+
+      const addFiles = (files) => {
+        const entries = Array.from(files).map(file => ({
+          id: uid(), file, name: file.name,
+          preview: URL.createObjectURL(file), processed: null, processedName: null,
+        }));
+        setState(p => ({ ...p, images: [...p.images, ...entries] }));
+      };
+
+      const processAll = async () => {
+        setProcessing(true);
+        // Build slug: OfferName → offer_name
+        const offerSlug = (brief.offerName || 'creative')
+          .trim()
+          .replace(/[^a-zA-Z0-9]+/g, '_')
+          .replace(/^_|_$/g, '') || 'creative';
+        const dateStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+        const updated = await Promise.all(images.map(async (img, imgIdx) => {
+          const seqNum = String(imgIdx + 1).padStart(2, '0');
+          try {
+            // ── Step 1: crop / resize base image (skip if already done) ────────
+            let dataUrl = img.processed, ext = img._ext || 'jpg', gifData = img._gifData;
+            if (!dataUrl) {
+              const result = await processImage(img.file);
+              dataUrl = result.dataUrl; ext = result.ext; gifData = result.gifData;
+            }
+
+            // ── Step 2: generate play-button variant if toggled and not yet done
+            let playVariant = img.playVariant || null;
+            if (createPlayVariations && !playVariant) {
+              if (ext === 'gif' && gifData) {
+                playVariant = await processAnimatedGIF(gifData, 1600, 900, true);
+              } else {
+                playVariant = await addPlayButtonOverlay(dataUrl);
+              }
+            } else if (!createPlayVariations) {
+              // Toggle was turned off — drop any existing variant
+              playVariant = null;
+            }
+
+            // ── Step 3: ALWAYS derive names from current image state ────────────
+            //   NPB = No Play Button  |  PB = Play Button
+            const playExt = ext === 'gif' ? 'gif' : 'jpg';
+            const processedName    = `${offerSlug}_${dateStr}_NPB-${seqNum}.${ext}`;
+            const playVariantName  = playVariant
+              ? `${offerSlug}_${dateStr}_PB-${seqNum}.${playExt}`
+              : null;
+
+            return { ...img, processed: dataUrl, processedName, _ext: ext, _gifData: gifData, playVariant, playVariantName };
+          } catch { return { ...img, processedError: true }; }
+        }));
+        setState(p => ({ ...p, images: updated }));
+        setProcessing(false);
+      };
+
+      const saveToDrive = async () => {
+        if (!config.googleClientId) { setDriveError('Google Client ID not set — open Settings.'); return; }
+        if (!folderId.trim()) { setDriveError('Enter a Drive Folder ID below the Save button.'); return; }
+        if (!accessToken) { tokenClientRef.current?.requestAccessToken(); return; }
+        setDriveError('');
+        const toUpload = images.filter(img => img.processed && !driveStatus[img.id]);
+        for (const img of toUpload) {
+          setDriveStatus(p => ({ ...p, [img.id]: 'uploading' }));
+          try {
+            await uploadToDrive(img.processedName, img.processed, folderId.trim(), accessToken);
+            if (img.playVariant) {
+              await uploadToDrive(img.playVariantName, img.playVariant, folderId.trim(), accessToken);
+            }
+            setDriveStatus(p => ({ ...p, [img.id]: 'done' }));
+          } catch {
+            setDriveStatus(p => ({ ...p, [img.id]: 'error' }));
+            setDriveError('Some uploads failed. Try reconnecting Drive.');
+          }
+        }
+      };
+
+      const generatePrompts = async () => {
+        if (!config.anthropicKey) { setPromptError('Add your Anthropic API key in Settings first.'); return; }
+        setLoadingPrompts(true); setPromptError('');
+        try {
+          const raw = await callClaude(GEM_IMAGE_PROMPT(brief), config.anthropicKey);
+          const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 15);
+          setState(p => ({ ...p, imagePrompts: lines }));
+        } catch (e) { setPromptError(e.message); }
+        finally { setLoadingPrompts(false); }
+      };
+
+      const removeImage = (id) => setState(p => ({ ...p, images: p.images.filter(img => img.id !== id) }));
+
+      const downloadImage = (img) => {
+        const a = document.createElement('a');
+        a.href = img.processed;
+        a.download = img.processedName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      };
+
+      const [zipping, setZipping] = useState(false);
+      const downloadAllAsZip = async () => {
+        const processed = images.filter(img => img.processed);
+        if (!processed.length) return;
+        setZipping(true);
+        try {
+          const zip = new JSZip();
+          processed.forEach(img => {
+            zip.file(img.processedName, img.processed.split(',')[1], { base64: true });
+            if (img.playVariant) {
+              zip.file(img.playVariantName, img.playVariant.split(',')[1], { base64: true });
+            }
+          });
+          const blob = await zip.generateAsync({ type: 'blob' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${brief.offerName.replace(/[^a-z0-9]/gi, '_') || 'images'}_processed.zip`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } finally { setZipping(false); }
+      };
+
+      const hasProcessed = images.some(img => img.processed);
+      const allProcessed = images.length > 0 && images.every(img => img.processed || img.processedError);
+
+      return (
+        <div className="fade-in space-y-6">
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-slate-800">Images</h2>
+              <p className="text-sm text-slate-500 mt-1">Upload client images, get AI image prompts. Smart-crop to 1600×900 JPEG, then download or save to Drive.</p>
+            </div>
+            {images.length > 0 && <Badge color={hasProcessed ? 'emerald' : 'slate'}>{images.filter(i => i.processed).length}/{images.length} processed</Badge>}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            {/* Upload */}
+            <div className="space-y-3">
+              <span className="text-sm font-semibold text-slate-700">Upload Client Images</span>
+              <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 text-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/50 transition-all group"
+                onClick={() => fileRef.current?.click()}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => { e.preventDefault(); addFiles(e.dataTransfer.files); }}>
+                <div className="text-3xl mb-2 group-hover:scale-110 transition-transform">🖼</div>
+                <p className="text-sm text-slate-500">Drag & drop or <span className="text-indigo-600 font-medium">browse files</span></p>
+                <p className="text-xs text-slate-400 mt-1">JPG, PNG, WebP, GIF — any size</p>
+                <input ref={fileRef} type="file" multiple accept="image/*" className="hidden" onChange={e => addFiles(e.target.files)} />
+              </div>
+
+              {/* Play button variation toggle */}
+              <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                <div
+                  onClick={() => setState(p => ({ ...p, createPlayVariations: !p.createPlayVariations }))}
+                  className={`w-9 h-5 rounded-full transition-colors flex-shrink-0 relative ${createPlayVariations ? 'bg-indigo-600' : 'bg-slate-200'}`}
+                >
+                  <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${createPlayVariations ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                </div>
+                <span className="text-sm text-slate-700 font-medium">Generate play button variations</span>
+                <span className="text-xs text-slate-400">(adds ▶ overlay as extra images)</span>
+              </label>
+
+              {images.length > 0 && (
+                <div className="space-y-1.5 max-h-72 overflow-y-auto">
+                  {images.map(img => {
+                    const st = driveStatus[img.id];
+                    return (
+                      <div key={img.id} className="space-y-1">
+                        {/* Base image row */}
+                        <div className="flex items-center gap-2.5 p-2.5 bg-white border border-slate-200 rounded-xl group">
+                          <img src={img.processed || img.preview} className="w-14 h-9 object-cover rounded-lg flex-shrink-0" alt="" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-slate-700 truncate">{img.processedName || img.name}</p>
+                            <p className="text-xs text-slate-400">
+                              {img.processedError ? '⚠ Processing failed' : img.processed ? `✓ 1600×900 ${img._ext === 'gif' ? 'GIF' : 'JPEG'}` : 'Original'}
+                            </p>
+                          </div>
+                          {st === 'uploading' && <span className="text-xs text-blue-500 flex-shrink-0"><Spinner /></span>}
+                          {st === 'done' && <span className="text-xs text-emerald-500 flex-shrink-0">✓ Drive</span>}
+                          {st === 'error' && <span className="text-xs text-red-400 flex-shrink-0">✗</span>}
+                          {img.processed && (
+                            <button onClick={() => downloadImage(img)} title="Download" className="text-slate-300 hover:text-indigo-500 transition-colors text-base flex-shrink-0 opacity-0 group-hover:opacity-100">↓</button>
+                          )}
+                          <button onClick={() => removeImage(img.id)} className="text-slate-200 hover:text-red-400 transition-colors text-base flex-shrink-0 opacity-0 group-hover:opacity-100">×</button>
+                        </div>
+                        {/* Play variant row */}
+                        {img.playVariant && (
+                          <div className="flex items-center gap-2.5 p-2.5 bg-indigo-50 border border-indigo-100 rounded-xl group ml-4">
+                            <div className="w-14 h-9 rounded-lg flex-shrink-0 relative overflow-hidden">
+                              <img src={img.playVariant} className="w-full h-full object-cover" alt="" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium text-indigo-700 truncate">{img.playVariantName}</p>
+                              <p className="text-xs text-indigo-400">▶ Play button variation</p>
+                            </div>
+                            <button onClick={() => {
+                              const a = document.createElement('a');
+                              a.href = img.playVariant; a.download = img.playVariantName;
+                              document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                            }} title="Download" className="text-indigo-200 hover:text-indigo-500 transition-colors text-base flex-shrink-0 opacity-0 group-hover:opacity-100">↓</button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {images.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <Btn onClick={processAll} disabled={processing} variant="dark" size="sm" className="w-full justify-center">
+                    {processing ? <><Spinner /> Processing...</> : allProcessed && (!createPlayVariations || images.every(i => i.playVariant)) ? '✓ All Processed' : '⚙ Process Images'}
+                  </Btn>
+                  {hasProcessed && (
+                    <div className="flex flex-col gap-2">
+                      <div className="flex gap-2">
+                        <Btn onClick={downloadAllAsZip} disabled={zipping} variant="secondary" size="sm" className="flex-1 justify-center">
+                          {zipping ? <><Spinner /> Zipping...</> : '↓ Download All as ZIP'}
+                        </Btn>
+                        <Btn onClick={saveToDrive} variant="success" size="sm" className="flex-1 justify-center">
+                          {accessToken ? '↑ Save to Drive' : '🔑 Connect Drive'}
+                        </Btn>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-slate-500 whitespace-nowrap">Drive Folder ID</label>
+                        <input
+                          type="text"
+                          value={folderId}
+                          onChange={e => setFolderId(e.target.value)}
+                          placeholder="Paste folder ID from Drive URL…"
+                          className="flex-1 text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-violet-400 bg-white text-slate-700 placeholder-slate-300"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+              {driveError && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{driveError}</p>}
+            </div>
+
+            {/* Gem Image Prompts */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-sm font-semibold text-slate-700">Gem Image Prompts</span>
+                  <p className="text-xs text-slate-400 mt-0.5">5 AI-ready prompts for Midjourney / DALL-E</p>
+                </div>
+                <Btn onClick={generatePrompts} disabled={loadingPrompts} size="sm">
+                  {loadingPrompts ? <><Spinner /> Generating...</> : '✦ Generate (5)'}
+                </Btn>
+              </div>
+              {promptError && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{promptError}</p>}
+              {imagePrompts.length === 0 ? (
+                <div className="border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center text-slate-400 text-sm gap-2 py-16">
+                  <span className="text-2xl">💡</span>
+                  Generate image prompts aligned to your brief
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                  {imagePrompts.map((p, i) => (
+                    <div key={i} className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 leading-relaxed fade-in">
+                      <div className="flex items-start justify-between gap-2">
+                        <span>{p}</span>
+                        <button
+                          onClick={() => navigator.clipboard?.writeText(p)}
+                          className="text-slate-300 hover:text-indigo-500 flex-shrink-0 text-base" title="Copy prompt">⎘</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex justify-between pt-2">
+            <Btn onClick={onBack} variant="ghost">← Back</Btn>
+            <Btn onClick={onNext} size="lg">Next: Export →</Btn>
+          </div>
+        </div>
+      );
+    }
+
+    // ─── STEP 4: BRIEF BUILDER & EXPORT ─────────────────────────────────────
+
+    const CTA_OPTIONS = ['Find Out More', 'Learn More', 'Watch The Video', 'Take The Quiz', 'Get A Quote', 'Other'];
+    const QUALITY_OPTIONS = ['Red', 'Yellow', 'Green'];
+
+    function escHtml(s) {
+      return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // ─── shared brief data builder (used by both text + html) ────────────────
+    function buildBriefData({ brief, headlineState, imageState, traits, imageTitles = {}, boldTitles = new Set() }) {
+      const selected = headlineState.selected || [];
+      const launchHeadlines = headlineState.launchPackage || [];
+      const processedImages = imageState.images.filter(img => img.processed);
+
+      const allTraffic = selected.filter(s => !s.source || s.source === 'traffic' || s.source === 'client_traffic');
+      const pollSelected = selected.filter(s => s.source === 'poll' || s.source === 'client_poll');
+
+      let imgIndex = 1;
+      const imgEntries = processedImages.flatMap(img => {
+        const baseTitle = imageTitles[img.id] || '';
+        const isBold = boldTitles.has(img.id);
+        const pbTitle = baseTitle ? baseTitle + ' (PB)' : '';
+        const rows = [{ name: img.processedName, title: baseTitle, isPB: false, isBold }];
+        if (img.playVariant) rows.push({ name: img.playVariantName, title: pbTitle, isPB: true, isBold });
+        return rows.map(r => ({ ...r, n: imgIndex++ }));
+      });
+
+      return {
+        offer: brief.offerName || '—',
+        ra: brief.ra || '—',
+        lockerLink: brief.lockerLink || '—',
+        allTraffic,
+        pollSelected,
+        launchHeadlines,
+        imgFolder: imageState.driveFolderUrl || '[See downloaded images]',
+        imgEntries,
+        description: traits.description || '—',
+        cta: traits.cta === 'Other' ? traits.ctaOther || '—' : traits.cta || '—',
+        quality: traits.quality || '—',
+        isPolitical: traits.isPolitical || 'No',
+      };
+    }
+
+    // ─── plain-text version (for .txt download) ──────────────────────────────
+    function buildBriefText(args) {
+      const d = buildBriefData(args);
+      const fmt = h => d.launchHeadlines.includes(h) ? `**${h}**` : h;
+      const lines = [];
+
+      lines.push(`Offer(s):\n${d.offer}`);
+      lines.push(`RA(s):\n${d.ra}`);
+      lines.push(`Locker Link(s):\n${d.lockerLink}`);
+
+      const headlineSections = [];
+      if (d.allTraffic.length > 0)
+        headlineSections.push(`Traffic Unit Headlines:\n${d.allTraffic.map(s => fmt(s.text)).join('\n')}`);
+      if (d.pollSelected.length > 0)
+        headlineSections.push(`Poll Style Headlines:\n${d.pollSelected.map(s => fmt(s.text)).join('\n')}`);
+      lines.push(`Headlines:\n*Bold = launch package.\n\n` + (headlineSections.join('\n\n') || '—'));
+
+      const imgLines = d.imgEntries.length > 0
+        ? d.imgEntries.map(e => `Image ${e.n} - ${e.name}`).join('\n')
+        : '—';
+      lines.push(`Images:\n${d.imgFolder}\n\n${imgLines}\n\n*Do the images need cropping? N\nResize tool: https://www.birme.net/ (1600*900, .jpeg)`);
+
+      // Cover image title table (only if at least one title has been generated)
+      if (d.imgEntries.some(e => e.title)) {
+        const fmtTitle = e => e.isBold && e.title ? `**${e.title}**` : (e.title || '—');
+        const rows = d.imgEntries.map(e => `${e.name} | ${fmtTitle(e)}`).join('\n');
+        lines.push(`Cover Image Titles:\n*Bold = launch package.\nFile Name | Cover Media Title\n${rows}`);
+      }
+
+      lines.push(`Description:\n${d.description}`);
+      lines.push(`CTA:\n${d.cta}`);
+      lines.push(`Quality\n${d.quality}`);
+      lines.push(`Is Political\n${d.isPolitical}`);
+
+      return lines.join('\n\n');
+    }
+
+    // ─── HTML version (rich clipboard → Asana bold renders correctly) ─────────
+    function buildBriefHTML(args) {
+      const d = buildBriefData(args);
+      const fmtH = h => d.launchHeadlines.includes(h)
+        ? `<strong>${escHtml(h)}</strong>`
+        : escHtml(h);
+
+      const sec = (label, content) =>
+        `<p><strong>${label}</strong><br>${content}</p>`;
+
+      const headlineParts = [];
+      if (d.allTraffic.length > 0)
+        headlineParts.push(`<strong>Traffic Unit Headlines:</strong><br>${d.allTraffic.map(s => fmtH(s.text)).join('<br>')}`);
+      if (d.pollSelected.length > 0)
+        headlineParts.push(`<strong>Poll Style Headlines:</strong><br>${d.pollSelected.map(s => fmtH(s.text)).join('<br>')}`);
+
+      const imgLines = d.imgEntries.length > 0
+        ? d.imgEntries.map(e => `Image ${e.n} - ${escHtml(e.name)}`).join('<br>')
+        : '—';
+
+      const parts = [
+        sec('Offer(s):', escHtml(d.offer)),
+        sec('RA(s):', escHtml(d.ra)),
+        sec('Locker Link(s):', escHtml(d.lockerLink)),
+        `<p><strong>Headlines:</strong><br><em>*Bold = launch package.</em><br><br>${headlineParts.join('<br><br>') || '—'}</p>`,
+        sec('Images:', `${escHtml(d.imgFolder)}<br><br>${imgLines}<br><br><em>*Do the images need cropping? N</em><br>Resize tool: https://www.birme.net/ (1600*900, .jpeg)`),
+        ...(d.imgEntries.some(e => e.title) ? [`<p><strong>Cover Image Titles:</strong><br><em>*Bold = launch package.</em><br>
+<table style="border-collapse:collapse;width:100%;font-size:13px;margin-top:6px">
+<thead><tr>
+<th style="text-align:left;padding:5px 10px;border:1px solid #e2e8f0;background:#f8fafc">File Name</th>
+<th style="text-align:left;padding:5px 10px;border:1px solid #e2e8f0;background:#f8fafc">Cover Media Title</th>
+</tr></thead>
+<tbody>${d.imgEntries.map(e => `<tr>
+<td style="padding:5px 10px;border:1px solid #e2e8f0;font-family:monospace;font-size:12px">${escHtml(e.name)}</td>
+<td style="padding:5px 10px;border:1px solid #e2e8f0">${e.isBold && e.title ? `<strong>${escHtml(e.title)}</strong>` : escHtml(e.title || '—')}</td>
+</tr>`).join('')}
+</tbody></table></p>`] : []),
+        sec('Description:', escHtml(d.description)),
+        sec('CTA:', escHtml(d.cta)),
+        sec('Quality', escHtml(d.quality)),
+        sec('Is Political', escHtml(d.isPolitical)),
+      ];
+
+      return `<div style="font-family:sans-serif;font-size:14px;line-height:1.7">${parts.join('\n')}</div>`;
+    }
+
+    function Step4({ brief, headlineState, setHeadlineState, imageState, onBack, config }) {
+      const { selected: selectedRaw, universalDesc, launchPackage = [] } = headlineState;
+      const { images } = imageState;
+
+      const [traits, setTraits] = useState({
+        description: universalDesc || '',
+        cta: 'Learn More',
+        ctaOther: '',
+        quality: 'Green',
+        isPolitical: 'No',
+      });
+      const [copied, setCopied] = useState(false);
+      // imageTitles: { [imgId]: 'Cover Title' }
+      const [imageTitles, setImageTitles] = useState({});
+      const [boldTitles, setBoldTitles] = useState(new Set()); // imgIds whose title is bolded
+      const [titlesLoading, setTitlesLoading] = useState(false);
+      const [titlesError, setTitlesError] = useState('');
+
+      const toggleBoldTitle = (imgId) => setBoldTitles(prev => {
+        const next = new Set(prev);
+        next.has(imgId) ? next.delete(imgId) : next.add(imgId);
+        return next;
+      });
+      const set = (k, v) => setTraits(p => ({ ...p, [k]: v }));
+
+      useEffect(() => {
+        if (universalDesc && !traits.description) set('description', universalDesc);
+      }, [universalDesc]);
+
+      // Group selected headlines by type for the brief
+      const trafficSelected = selectedRaw.filter(s => !s.source || s.source === 'traffic' || s.source === 'client_traffic');
+      const pollSelected    = selectedRaw.filter(s => s.source === 'poll' || s.source === 'client_poll');
+      const processedImages = images.filter(img => img.processed);
+
+      // Auto-generate cover titles when step loads
+      useEffect(() => {
+        if (!config.anthropicKey || processedImages.length === 0) return;
+        const uncovered = processedImages.filter(img => !imageTitles[img.id]);
+        if (uncovered.length === 0) return;
+        runTitleGeneration(uncovered);
+      }, [processedImages.length]);
+
+      const runTitleGeneration = async (imgs) => {
+        setTitlesLoading(true);
+        setTitlesError('');
+        try {
+          await Promise.all(imgs.map(async img => {
+            try {
+              const title = await generateImageTitle(img.processed, img._ext === 'gif', config.anthropicKey);
+              setImageTitles(prev => ({ ...prev, [img.id]: title }));
+            } catch {
+              setImageTitles(prev => ({ ...prev, [img.id]: '—' }));
+            }
+          }));
+        } catch (e) {
+          setTitlesError(e.message);
+        } finally {
+          setTitlesLoading(false);
+        }
+      };
+
+      const toggleLaunch = (h) => {
+        setHeadlineState(p => ({
+          ...p,
+          launchPackage: (p.launchPackage || []).includes(h)
+            ? (p.launchPackage || []).filter(x => x !== h)
+            : [...(p.launchPackage || []), h],
+        }));
+      };
+
+      const briefArgs = { brief, headlineState: { ...headlineState, launchPackage }, imageState, traits, imageTitles, boldTitles };
+      const briefText = buildBriefText(briefArgs);
+
+      const copyToClipboard = async () => {
+        try {
+          // Write both HTML (for Asana/Notion rich text bold) and plain text fallback
+          const htmlBlob  = new Blob([buildBriefHTML(briefArgs)],  { type: 'text/html' });
+          const textBlob  = new Blob([briefText],                  { type: 'text/plain' });
+          await navigator.clipboard.write([new ClipboardItem({ 'text/html': htmlBlob, 'text/plain': textBlob })]);
+        } catch {
+          // Fallback: plain text only
+          await navigator.clipboard.writeText(briefText).catch(() => {});
+        }
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      };
+
+      const downloadBrief = () => {
+        const blob = new Blob([briefText], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${brief.offerName.replace(/[^a-z0-9]/gi, '_') || 'brief'}_ContentBrief_${new Date().toISOString().slice(0,10)}.txt`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      };
+
+      return (
+        <div className="fade-in space-y-6">
+          <div>
+            <h2 className="text-xl font-bold text-slate-800">Content Brief</h2>
+            <p className="text-sm text-slate-500 mt-1">Fill in the remaining fields, mark your launch package headlines, then copy or download the brief for DollarBird.</p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            {/* ── Left: Form ── */}
+            <div className="space-y-5">
+
+              {/* Description */}
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <label className="text-sm font-medium text-slate-700">Description</label>
+                  <span className={`text-xs font-mono ${charClass(traits.description.length, 120)}`}>{traits.description.length}/120</span>
+                </div>
+                <input value={traits.description} onChange={e => set('description', e.target.value)}
+                  placeholder="Universal description — bridges headlines to the landing page..."
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
+              </div>
+
+              {/* CTA */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">CTA</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {CTA_OPTIONS.map(opt => (
+                    <button key={opt} onClick={() => set('cta', opt)}
+                      className={`text-sm px-3 py-2 rounded-lg border font-medium transition-all text-left ${
+                        traits.cta === opt ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                      }`}>
+                      {traits.cta === opt ? '● ' : '○ '}{opt}
+                    </button>
+                  ))}
+                </div>
+                {traits.cta === 'Other' && (
+                  <input value={traits.ctaOther} onChange={e => set('ctaOther', e.target.value)}
+                    placeholder="Specify CTA text..."
+                    className="mt-2 w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
+                )}
+              </div>
+
+              {/* Quality */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Quality</label>
+                <div className="flex gap-2">
+                  {QUALITY_OPTIONS.map(q => {
+                    const colors = { Red: 'bg-red-50 border-red-300 text-red-700', Yellow: 'bg-yellow-50 border-yellow-300 text-yellow-700', Green: 'bg-emerald-50 border-emerald-300 text-emerald-700' };
+                    const inactive = 'bg-white border-slate-200 text-slate-600 hover:border-slate-300';
+                    return (
+                      <button key={q} onClick={() => set('quality', q)}
+                        className={`flex-1 text-sm px-3 py-2 rounded-lg border font-medium transition-all ${traits.quality === q ? colors[q] : inactive}`}>
+                        {q}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-slate-400 mt-1">If multiple values needed, pick one and batch edit manually in Global Report after DollarBird builds creatives.</p>
+              </div>
+
+              {/* Is Political */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Is Political</label>
+                <div className="flex gap-2">
+                  {['Yes', 'No'].map(v => (
+                    <button key={v} onClick={() => set('isPolitical', v)}
+                      className={`flex-1 text-sm px-3 py-2 rounded-lg border font-medium transition-all ${
+                        traits.isPolitical === v ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                      }`}>
+                      {v}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-slate-400 mt-1">If multiple values needed, pick one and batch edit manually in Global Report after DollarBird builds creatives.</p>
+              </div>
+
+              {/* Launch package headlines — grouped by type */}
+              {selectedRaw.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Launch Package Headlines
+                    <span className="ml-2 text-xs text-slate-400 font-normal">— bold in brief</span>
+                  </label>
+                  <div className="space-y-3 max-h-56 overflow-y-auto pr-1">
+                    {trafficSelected.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wide mb-1">Traffic Unit</p>
+                        <div className="space-y-1">
+                          {trafficSelected.map((s, i) => {
+                            const isLaunch = launchPackage.includes(s.text);
+                            return (
+                              <div key={i} onClick={() => toggleLaunch(s.text)}
+                                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border cursor-pointer transition-all text-sm ${
+                                  isLaunch ? 'border-indigo-200 bg-indigo-50 font-semibold text-slate-800' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                                }`}>
+                                <span className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center text-xs ${isLaunch ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-300'}`}>
+                                  {isLaunch && 'B'}
+                                </span>
+                                {s.text}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {pollSelected.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-violet-500 uppercase tracking-wide mb-1">Poll Style</p>
+                        <div className="space-y-1">
+                          {pollSelected.map((s, i) => {
+                            const isLaunch = launchPackage.includes(s.text);
+                            return (
+                              <div key={i} onClick={() => toggleLaunch(s.text)}
+                                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg border cursor-pointer transition-all text-sm ${
+                                  isLaunch ? 'border-violet-200 bg-violet-50 font-semibold text-slate-800' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                                }`}>
+                                <span className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center text-xs ${isLaunch ? 'bg-violet-600 border-violet-600 text-white' : 'border-slate-300'}`}>
+                                  {isLaunch && 'B'}
+                                </span>
+                                {s.text}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Cover Image Titles table */}
+              {processedImages.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium text-slate-700">
+                      Cover Image Titles
+                      <span className="ml-2 text-xs text-slate-400 font-normal">— AI-generated, included in brief</span>
+                    </label>
+                    <Btn size="sm" variant="ghost"
+                      disabled={titlesLoading}
+                      onClick={() => runTitleGeneration(processedImages)}>
+                      {titlesLoading ? <><Spinner /> Generating...</> : '↻ Regenerate'}
+                    </Btn>
+                  </div>
+                  {titlesError && <p className="text-xs text-red-500 mb-2">{titlesError}</p>}
+                  {!config.anthropicKey && (
+                    <p className="text-xs text-slate-400 italic">Add Anthropic API key in Settings to auto-generate titles.</p>
+                  )}
+                  <div className="border border-slate-200 rounded-xl overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200">
+                          <th className="px-3 py-2 w-6"></th>
+                          <th className="text-left px-3 py-2 text-slate-500 font-medium" style={{width:'52%'}}>File Name</th>
+                          <th className="text-left px-3 py-2 text-slate-500 font-medium">Cover Media Title</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {processedImages.flatMap((img) => {
+                          const baseTitle = imageTitles[img.id];
+                          const isBold = boldTitles.has(img.id);
+                          const rows = [{ key: img.id + '_npb', name: img.processedName, isPB: false }];
+                          if (img.playVariant) rows.push({ key: img.id + '_pb', name: img.playVariantName, isPB: true });
+                          return rows.map((r) => (
+                            <tr key={r.key}
+                              onClick={() => !r.isPB && toggleBoldTitle(img.id)}
+                              className={`border-b border-slate-100 last:border-0 transition-colors
+                                ${r.isPB ? 'bg-indigo-50/40' : isBold ? 'bg-amber-50 cursor-pointer' : 'hover:bg-slate-50 cursor-pointer'}`}>
+                              <td className="px-3 py-2 text-center">
+                                {!r.isPB && (
+                                  <span className={`inline-flex w-4 h-4 rounded border-2 items-center justify-center text-xs font-bold transition-colors ${
+                                    isBold ? 'bg-amber-500 border-amber-500 text-white' : 'border-slate-300 text-slate-300'
+                                  }`}>B</span>
+                                )}
+                                {r.isPB && isBold && (
+                                  <span className="inline-flex w-4 h-4 rounded border-2 items-center justify-center text-xs font-bold bg-amber-500 border-amber-500 text-white opacity-50">B</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 font-mono text-slate-500 truncate max-w-0" style={{maxWidth:'1px'}}>
+                                <span className="block truncate" title={r.name}>{r.name || '—'}</span>
+                              </td>
+                              <td className="px-3 py-2 text-slate-700" onClick={e => r.isPB && e.stopPropagation()}>
+                                {baseTitle === undefined
+                                  ? <span className="text-slate-300 italic">{config.anthropicKey ? <Spinner /> : '—'}</span>
+                                  : r.isPB
+                                    ? <span className={isBold ? 'font-semibold text-slate-800' : 'text-slate-500'}>
+                                        {baseTitle ? baseTitle + ' (PB)' : <span className="italic text-slate-300">—</span>}
+                                      </span>
+                                    : <input value={baseTitle || ''} onChange={e => { e.stopPropagation(); setImageTitles(p => ({ ...p, [img.id]: e.target.value })); }}
+                                        onClick={e => e.stopPropagation()}
+                                        className={`w-full bg-transparent focus:outline-none focus:ring-1 focus:ring-amber-400 rounded px-1 -mx-1 ${isBold ? 'font-semibold' : ''}`}
+                                        placeholder="—" />
+                                }
+                              </td>
+                            </tr>
+                          ));
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">Click a row to toggle bold — bolded titles appear as launch package in the brief.</p>
+                </div>
+              )}
+            </div>
+
+            {/* ── Right: Brief Preview ── */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-slate-700">Brief Preview</span>
+                <div className="flex gap-2">
+                  <Btn onClick={copyToClipboard} variant={copied ? 'success' : 'secondary'} size="sm">
+                    {copied ? '✓ Copied' : '⎘ Copy'}
+                  </Btn>
+                  <Btn onClick={downloadBrief} variant="secondary" size="sm">↓ .txt</Btn>
+                </div>
+              </div>
+              <div className="border border-slate-200 rounded-xl bg-slate-50 p-4 max-h-[560px] overflow-y-auto">
+                <pre className="text-xs text-slate-700 whitespace-pre-wrap font-sans leading-relaxed">
+                  {briefText.split('\n').map((line, i) => {
+                    // Whole-line bold: **headline**
+                    if (line.startsWith('**') && line.endsWith('**')) {
+                      return <span key={i}><strong>{line.slice(2, -2)}</strong>{'\n'}</span>;
+                    }
+                    // Inline bold inside pipe rows: filename | **Title (PB)**
+                    if (line.includes(' | **') && line.endsWith('**')) {
+                      const pipeIdx = line.lastIndexOf(' | **');
+                      const before = line.slice(0, pipeIdx + 3); // up to "| "
+                      const bolded = line.slice(pipeIdx + 5, -2);   // strip ** **
+                      return <span key={i}>{before}<strong>{bolded}</strong>{'\n'}</span>;
+                    }
+                    // Section headers
+                    const isHeader = ['Offer(s):', 'RA(s):', 'Locker Link(s):', 'Headlines:', 'Traffic Unit Headlines:', 'Poll Style Headlines:', 'Images:', 'Cover Image Titles:', 'Description:', 'CTA:', 'Quality', 'Is Political'].some(h => line.startsWith(h));
+                    if (isHeader) return <span key={i}><strong className="text-slate-900">{line}</strong>{'\n'}</span>;
+                    return <span key={i}>{line}{'\n'}</span>;
+                  })}
+                </pre>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-between items-center pt-2">
+            <Btn onClick={onBack} variant="ghost">← Back</Btn>
+            <div className="flex gap-2">
+              <Btn onClick={copyToClipboard} variant={copied ? 'success' : 'secondary'} size="lg">
+                {copied ? '✓ Copied to Clipboard' : '⎘ Copy Brief'}
+              </Btn>
+              <Btn onClick={downloadBrief} variant="primary" size="lg">↓ Download Brief</Btn>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ─── ROOT APP ────────────────────────────────────────────────────────────
+
+    const DEFAULT_CONFIG = { anthropicKey: '', serpApiKey: '', googleClientId: '' };
+
+    function App() {
+      const [step, setStep] = useState(1);
+      const [maxReached, setMaxReached] = useState(1);
+      const [showSettings, setShowSettings] = useState(false);
+
+      const [config, setConfig] = useState(() => {
+        try { return { ...DEFAULT_CONFIG, ...JSON.parse(localStorage.getItem('nads_cfg') || '{}') }; }
+        catch { return DEFAULT_CONFIG; }
+      });
+
+      const [brief, setBrief] = useState({
+        offerName: '', angle: '', audience: '', landingPage: '', ra: '', lockerLink: '',
+      });
+
+      const [headlineState, setHeadlineState] = useState({
+        clientTrafficText: '',  // client-provided traffic unit headlines, one per line
+        clientPollText: '',     // client-provided poll style headlines, one per line
+        trafficHeadlines: [],
+        pollHeadlines: [],
+        universalDesc: '',
+        selected: [],      // [{ key, text, source }]
+        editingKey: null,
+      });
+
+      const [imageState, setImageState] = useState({
+        images: [],
+        imagePrompts: [],
+        accessToken: null,
+        createPlayVariations: false,
+      });
+
+      // No forced settings open — API key is optional (only needed for AI generation)
+
+      const goTo = (n) => { setStep(n); setMaxReached(p => Math.max(p, n)); };
+      const saveConfig = (c) => { setConfig(c); setShowSettings(false); };
+
+      return (
+        <div className="min-h-screen bg-slate-100">
+          <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
+            <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0 flex-shrink-0">
+                <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">N</div>
+                <div className="min-w-0">
+                  <span className="font-semibold text-slate-800 text-sm">Native Ad Studio</span>
+                  {brief.offerName && <span className="ml-2 text-xs text-slate-400 hidden sm:inline">— {brief.offerName}</span>}
+                </div>
+              </div>
+              <div className="flex-1 flex justify-center px-4 hidden md:flex">
+                <StepNav current={step} maxReached={maxReached} onChange={goTo} />
+              </div>
+              <Btn onClick={() => setShowSettings(true)} variant="secondary" size="sm">⚙ Settings</Btn>
+            </div>
+            <div className="md:hidden px-4 pb-3">
+              <StepNav current={step} maxReached={maxReached} onChange={goTo} />
+            </div>
+          </header>
+
+          <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+            <Card className="p-6 sm:p-8">
+              {step === 1 && <Step1 brief={brief} onChange={setBrief} onNext={() => goTo(2)} config={config} />}
+              {step === 2 && <Step2 brief={brief} state={headlineState} setState={setHeadlineState} config={config} onNext={() => goTo(3)} onBack={() => goTo(1)} />}
+              {step === 3 && <Step3 brief={brief} state={imageState} setState={setImageState} config={config} onNext={() => goTo(4)} onBack={() => goTo(2)} />}
+              {step === 4 && <Step4 brief={brief} headlineState={headlineState} setHeadlineState={setHeadlineState} imageState={imageState} onBack={() => goTo(3)} config={config} />}
+            </Card>
+            <p className="text-center text-xs text-slate-400 mt-4">
+              API keys stored locally in your browser · Powered by Gem Creative Specialist
+            </p>
+          </main>
+
+          {showSettings && <SettingsModal config={config} onSave={saveConfig} onClose={() => setShowSettings(false)} />}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
