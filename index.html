@@ -190,23 +190,65 @@ Return exactly 5 prompts, one per line, no numbering.`;
 
     // ─── TRENDS + ANGLE SUGGESTIONS ──────────────────────────────────────────
 
-    // Fetch related queries from SerpAPI Google Trends (US, past 3 months)
-    // Results are cached in localStorage for 7 days to conserve the monthly quota.
-    const TRENDS_CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
+    // ─── OFFER CATEGORY CLASSIFICATION ───────────────────────────────────────
+    // Maps any offer name to a broad category used as the Trends cache key.
+    // This means "Best Home Insurance Rates 2024" and "Cheap Homeowner Insurance"
+    // both hit the same cache entry ("insurance"), saving SerpAPI quota.
+    const OFFER_CATEGORIES = {
+      health:           /health|medicare|medicaid|medical|doctor|hospital|weight\s*loss|diet|supplement|dental|vision|prescription|drug|pharma|fertility|senior|aging|pain|sleep|anxiety|mental/i,
+      insurance:        /insurance|coverage|policy|policyholder|deductible|premium|underwrite/i,
+      personal_finance: /finance|loan|credit|debt|mortgage|savings|invest|bank|money|cash|fund|tax|irs|afford|budget|wealth|retire|pension|401k|ira|crypto|trading/i,
+      automotive:       /car|auto|vehicle|driver|truck|motor|suv|ev|electric vehicle|lease|dealership/i,
+      home:             /home|house|solar|roof|energy|hvac|plumb|electric|real estate|property|rent|landlord|remodel|renovation/i,
+      legal:            /legal|lawsuit|attorney|lawyer|injury|accident|settlement|compensation|claim|malpractice/i,
+      education:        /college|degree|course|learn|school|university|training|certification|online class/i,
+      travel:           /travel|flight|hotel|vacation|cruise|airfare|resort|airbnb|booking/i,
+      technology:       /tech|software|app|device|phone|computer|digital|saas|ai |cybersecurity|vpn/i,
+      ecommerce:        /shop|deal|discount|coupon|product|store|retail|brand|buy|sale/i,
+    };
 
-    async function fetchTrendsData(query, serpApiKey) {
-      const cacheKey = `nas_trends_${query.trim().toLowerCase()}`;
+    function classifyOffer(offerName) {
+      for (const [cat, re] of Object.entries(OFFER_CATEGORIES)) {
+        if (re.test(offerName)) return cat;
+      }
+      return 'general';
+    }
+
+    // Canonical search query per category — what we actually send to SerpAPI
+    const CATEGORY_QUERY = {
+      health:           'health products',
+      insurance:        'insurance',
+      personal_finance: 'personal finance',
+      automotive:       'automotive',
+      home:             'home improvement',
+      legal:            'legal services',
+      education:        'online education',
+      travel:           'travel deals',
+      technology:       'consumer technology',
+      ecommerce:        'online shopping',
+      general:          'consumer trends',
+    };
+
+    // Fetch related queries from SerpAPI Google Trends (US, trailing 7 days)
+    // Cache keyed by broad offer CATEGORY for 2 days — many similar offers share one search.
+    const TRENDS_CACHE_TTL = 2 * 24 * 60 * 60 * 1000; // 2 days in ms
+
+    async function fetchTrendsData(offerName, serpApiKey) {
+      const category = classifyOffer(offerName);
+      const searchQuery = CATEGORY_QUERY[category];
+      const cacheKey = `nas_trends_v2_${category}`;
+
       try {
         const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
         if (cached && (Date.now() - cached.ts) < TRENDS_CACHE_TTL) {
-          return { ...cached.data, fromCache: true, cachedAt: new Date(cached.ts) };
+          return { ...cached.data, fromCache: true, cachedAt: new Date(cached.ts), category };
         }
       } catch {}
 
       const params = new URLSearchParams({
         engine: 'google_trends',
-        q: query,
-        date: 'today 3-m',
+        q: searchQuery,
+        date: 'now 7-d',
         data_type: 'RELATED_QUERIES',
         geo: 'US',
         api_key: serpApiKey,
@@ -221,13 +263,13 @@ Return exactly 5 prompts, one per line, no numbering.`;
       const top    = (data.related_queries?.top    || []).slice(0, 10).map(q => q.query);
       const result = { rising, top };
       try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: result })); } catch {}
-      return result;
+      return { ...result, category };
     }
 
     // Generate angle suggestions via Claude, with optional real trends data injected
     async function suggestAnglesViaClaude(offerName, audience, angle, landingPage, trendsData, anthropicKey, hasTrendsData) {
       const trendsContext = hasTrendsData
-        ? `\nReal-time Google Trends data for "${offerName}" (US market, past 3 months):\n- Rising searches: ${trendsData.rising.join(', ') || 'N/A'}\n- Top searches: ${trendsData.top.join(', ') || 'N/A'}`
+        ? `\nUS Google Trends data — ${trendsData.category ? trendsData.category.replace('_', ' ') : 'category'} category, trailing 7 days:\n- Rising searches: ${trendsData.rising.join(', ') || 'N/A'}\n- Top searches: ${trendsData.top.join(', ') || 'N/A'}`
         : `\n(No live trends data — using general market knowledge. Add a SerpAPI key in Settings for real-time Google Trends.)`;
 
       const prompt = `You are a native advertising strategist. Generate 5 specific, high-converting campaign angles for a native ad campaign targeting T14 markets (${T14_LABEL}). Trends data is sourced from the US market.
@@ -748,7 +790,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
                       <span className="text-sm font-semibold text-violet-800">✦ Suggest Angles from Trends</span>
                       {config.serpApiKey
                         ? (trendsFromCache
-                          ? <span className="text-xs bg-amber-100 text-amber-700 font-medium px-2 py-0.5 rounded-full" title={`Cached ${trendsCachedAt ? trendsCachedAt.toLocaleDateString() : ''} — refreshes after 7 days`}>Cached (no search used)</span>
+                          ? <span className="text-xs bg-amber-100 text-amber-700 font-medium px-2 py-0.5 rounded-full" title={`Cached ${trendsCachedAt ? trendsCachedAt.toLocaleDateString() : ''} — refreshes after 2 days`}>Cached (no search used)</span>
                           : <span className="text-xs bg-emerald-100 text-emerald-700 font-medium px-2 py-0.5 rounded-full">Live data</span>)
                         : <span className="text-xs bg-slate-100 text-slate-500 font-medium px-2 py-0.5 rounded-full">AI knowledge</span>
                       }
