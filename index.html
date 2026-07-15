@@ -248,7 +248,7 @@ Return exactly 5 prompts, one per line, no numbering.`;
       const params = new URLSearchParams({
         engine: 'google_trends',
         q: searchQuery,
-        date: 'now 7-d',
+        date: 'today 1-m',
         data_type: 'RELATED_QUERIES',
         geo: 'US',
         api_key: serpApiKey,
@@ -269,7 +269,7 @@ Return exactly 5 prompts, one per line, no numbering.`;
     // Generate angle suggestions via Claude, with optional real trends data injected
     async function suggestAnglesViaClaude(offerName, audience, angle, landingPage, trendsData, anthropicKey, hasTrendsData) {
       const trendsContext = hasTrendsData
-        ? `\nUS Google Trends data — ${trendsData.category ? trendsData.category.replace('_', ' ') : 'category'} category, trailing 7 days:\n- Rising searches: ${trendsData.rising.join(', ') || 'N/A'}\n- Top searches: ${trendsData.top.join(', ') || 'N/A'}`
+        ? `\nUS Google Trends data — ${trendsData.category ? trendsData.category.replace('_', ' ') : 'category'} category, past 30 days:\n- Rising searches: ${trendsData.rising.join(', ') || 'N/A'}\n- Top searches: ${trendsData.top.join(', ') || 'N/A'}`
         : `\n(No live trends data — using general market knowledge. Add a SerpAPI key in Settings for real-time Google Trends.)`;
 
       const prompt = `You are a native advertising strategist. Generate 5 specific, high-converting campaign angles for a native ad campaign targeting T14 markets (${T14_LABEL}). Trends data is sourced from the US market.
