@@ -215,6 +215,79 @@
       transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
     }
     .dc-toggle.on::after { transform: translateX(16px); }
+
+    /* ─── DARK MODE: TAILWIND CLASS OVERRIDES ───────────────────────────────── */
+    /* Remaps hardcoded Tailwind text-* and bg-* classes so all 4 steps theme correctly */
+
+    /* Primary text */
+    .dark-mode .text-slate-900,
+    .dark-mode .text-slate-800,
+    .dark-mode .text-slate-700 { color: var(--text) !important; }
+
+    /* Secondary text */
+    .dark-mode .text-slate-600,
+    .dark-mode .text-slate-500 { color: var(--text-2) !important; }
+
+    /* Muted / hint text */
+    .dark-mode .text-slate-400,
+    .dark-mode .text-slate-300,
+    .dark-mode .text-slate-200 { color: var(--text-3) !important; }
+
+    /* Accent colors — keep hue, lighten slightly */
+    .dark-mode .text-indigo-700,
+    .dark-mode .text-indigo-600 { color: #818cf8 !important; }
+    .dark-mode .text-indigo-500   { color: #a5b4fc !important; }
+    .dark-mode .text-indigo-400   { color: #c7d2fe !important; }
+    .dark-mode .text-violet-800,
+    .dark-mode .text-violet-700   { color: #a78bfa !important; }
+    .dark-mode .text-violet-500   { color: #c4b5fd !important; }
+    .dark-mode .text-violet-400,
+    .dark-mode .text-violet-300   { color: #ddd6fe !important; }
+    .dark-mode .text-emerald-700,
+    .dark-mode .text-emerald-600  { color: #34d399 !important; }
+    .dark-mode .text-emerald-500  { color: #6ee7b7 !important; }
+    .dark-mode .text-amber-800,
+    .dark-mode .text-amber-700    { color: #fbbf24 !important; }
+    .dark-mode .text-blue-700,
+    .dark-mode .text-blue-500     { color: #60a5fa !important; }
+    .dark-mode .text-red-500,
+    .dark-mode .text-red-400      { color: #f87171 !important; }
+
+    /* Card / surface backgrounds in steps */
+    .dark-mode .bg-white           { background-color: var(--bg-card) !important; }
+    .dark-mode .bg-slate-50,
+    .dark-mode .bg-slate-100       { background-color: var(--bg-sub) !important; }
+    .dark-mode .bg-indigo-50       { background-color: rgba(99,102,241,0.12) !important; }
+    .dark-mode .bg-violet-50       { background-color: rgba(139,92,246,0.12) !important; }
+    .dark-mode .bg-emerald-50      { background-color: rgba(52,211,153,0.1)  !important; }
+    .dark-mode .bg-amber-50        { background-color: rgba(251,191,36,0.1)  !important; }
+    .dark-mode .bg-red-50          { background-color: rgba(248,113,113,0.1) !important; }
+    .dark-mode .bg-blue-50         { background-color: rgba(96,165,250,0.1)  !important; }
+
+    /* Borders */
+    .dark-mode .border-slate-200,
+    .dark-mode .border-slate-100   { border-color: var(--border) !important; }
+    .dark-mode .border-indigo-300  { border-color: rgba(99,102,241,0.35) !important; }
+    .dark-mode .border-violet-200  { border-color: rgba(139,92,246,0.35) !important; }
+    .dark-mode .border-amber-200,
+    .dark-mode .border-amber-100   { border-color: rgba(251,191,36,0.3)  !important; }
+    .dark-mode .border-blue-100    { border-color: rgba(96,165,250,0.2)  !important; }
+    .dark-mode .border-red-100     { border-color: rgba(248,113,113,0.2) !important; }
+
+    /* Dashed upload / empty-state borders */
+    .dark-mode .border-dashed { border-color: var(--border) !important; }
+
+    /* Inline badges (rounded-full pills) */
+    .dark-mode .bg-amber-100  { background-color: rgba(251,191,36,0.15)  !important; }
+    .dark-mode .bg-emerald-100{ background-color: rgba(52,211,153,0.12)  !important; }
+    .dark-mode .bg-slate-100  { background-color: var(--bg-sub) !important; }
+
+    /* Table headers */
+    .dark-mode th { color: var(--text-2) !important; border-color: var(--border) !important; }
+    .dark-mode td { border-color: var(--border) !important; }
+
+    /* Play button variant rows */
+    .dark-mode .text-indigo-200   { color: #818cf8 !important; }
   </style>
 </head>
 <body>
