@@ -14,19 +14,207 @@
   <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
   <style>
+    /* ─── DECIDE THEME TOKENS ─────────────────────────────────────────────── */
+    :root {
+      --bg:          #f2f1ef;
+      --bg-card:     #ffffff;
+      --bg-sub:      #f7f6f4;
+      --bg-input:    #ffffff;
+      --border:      #e3e1dc;
+      --text:        #0d0d0d;
+      --text-2:      #555;
+      --text-3:      #999;
+      --accent:      #00c8c8;
+      --accent-dim:  rgba(0,200,200,0.08);
+      --accent-border: rgba(0,200,200,0.35);
+      --btn-bg:      #0d0d0d;
+      --btn-text:    #fff;
+      --btn-hover:   #222;
+      --step-active-bg:   #0d0d0d;
+      --step-active-text: #fff;
+      --step-done-text:   #00c8c8;
+      --step-line-done:   #00c8c8;
+      --step-line:        #e3e1dc;
+      --scrollbar:   #d0cec9;
+      --shadow:      rgba(0,0,0,0.06);
+    }
+    .dark-mode {
+      --bg:          #080808;
+      --bg-card:     #111111;
+      --bg-sub:      #181818;
+      --bg-input:    #181818;
+      --border:      #282828;
+      --text:        #f0f0f0;
+      --text-2:      #909090;
+      --text-3:      #555;
+      --accent:      #00c8c8;
+      --accent-dim:  rgba(0,200,200,0.08);
+      --accent-border: rgba(0,200,200,0.3);
+      --btn-bg:      #00c8c8;
+      --btn-text:    #080808;
+      --btn-hover:   #00e0e0;
+      --step-active-bg:   #00c8c8;
+      --step-active-text: #080808;
+      --step-done-text:   #00c8c8;
+      --step-line-done:   #00c8c8;
+      --step-line:        #282828;
+      --scrollbar:   #333;
+      --shadow:      rgba(0,0,0,0.4);
+    }
+
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f1f5f9; }
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    body { margin: 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg); color: var(--text); transition: background 0.2s, color 0.2s; }
+
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 2px; }
+
     .fade-in { animation: fadeIn 0.2s ease; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
     .spin { animation: spin 1s linear infinite; display: inline-block; }
     @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-    .char-ok { color: #10b981; }
+    .char-ok { color: #00c8c8; }
     .char-warn { color: #f59e0b; }
     .char-over { color: #ef4444; }
+
+    /* ─── GRADIENT TOP BAR ───────────────────────────────────────────────── */
+    .dc-topbar { height: 2px; background: linear-gradient(90deg, #00c8c8 0%, #0066ff 40%, #c026d3 70%, #f43f5e 100%); }
+
+    /* ─── HEADER ─────────────────────────────────────────────────────────── */
+    .dc-header {
+      background: #080808;
+      border-bottom: 1px solid #1e1e1e;
+      position: sticky; top: 0; z-index: 40;
+    }
+
+    /* ─── CARD ───────────────────────────────────────────────────────────── */
+    .dc-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      box-shadow: 0 1px 4px var(--shadow);
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    /* ─── BUTTONS ─────────────────────────────────────────────────────────── */
+    .dc-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-family: 'Inter', sans-serif;
+      font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+      border-radius: 3px; transition: all 0.15s;
+      cursor: pointer; white-space: nowrap;
+      border: 1.5px solid transparent;
+    }
+    .dc-btn:disabled { opacity: 0.38; cursor: not-allowed; }
+    .dc-btn-sm  { font-size: 10px; padding: 5px 12px; }
+    .dc-btn-md  { font-size: 11px; padding: 7px 16px; }
+    .dc-btn-lg  { font-size: 11px; padding: 9px 20px; }
+
+    .dc-btn-primary { background: var(--btn-bg); color: var(--btn-text); border-color: var(--btn-bg); }
+    .dc-btn-primary:not(:disabled):hover { background: var(--btn-hover); border-color: var(--btn-hover); }
+
+    .dc-btn-secondary {
+      background: transparent; color: var(--text-2);
+      border-color: var(--border);
+    }
+    .dc-btn-secondary:not(:disabled):hover { border-color: var(--accent); color: var(--accent); }
+
+    .dc-btn-ghost { background: transparent; color: var(--text-2); border-color: transparent; }
+    .dc-btn-ghost:not(:disabled):hover { color: var(--text); }
+
+    .dc-btn-success { background: #00c8c8; color: #080808; border-color: #00c8c8; }
+    .dc-btn-success:not(:disabled):hover { background: #00e0e0; border-color: #00e0e0; }
+
+    .dc-btn-dark { background: var(--btn-bg); color: var(--btn-text); border-color: var(--btn-bg); }
+    .dc-btn-dark:not(:disabled):hover { background: var(--btn-hover); border-color: var(--btn-hover); }
+
+    /* ─── INPUTS ──────────────────────────────────────────────────────────── */
+    .dc-input, .dc-textarea, .dc-select {
+      width: 100%;
+      background: var(--bg-input);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-family: 'Inter', sans-serif;
+      transition: border-color 0.15s, background 0.2s;
+      outline: none;
+    }
+    .dc-input::placeholder, .dc-textarea::placeholder { color: var(--text-3); }
+    .dc-input:focus, .dc-textarea:focus, .dc-select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+    .dc-textarea { resize: vertical; }
+    .dc-select { appearance: none; cursor: pointer; }
+    .dc-label { display: block; font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-2); margin-bottom: 5px; }
+    .dc-hint { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+
+    /* ─── STEP NAV ────────────────────────────────────────────────────────── */
+    .dc-step-btn {
+      display: flex; align-items: center; gap: 7px;
+      padding: 6px 10px; border-radius: 3px;
+      font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+      transition: all 0.15s; border: none; background: none; cursor: pointer;
+    }
+    .dc-step-num {
+      width: 18px; height: 18px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 700; border: 1.5px solid currentColor; flex-shrink: 0;
+    }
+    .dc-step-line { height: 1px; width: 24px; }
+
+    /* ─── BADGE ───────────────────────────────────────────────────────────── */
+    .dc-badge {
+      display: inline-block;
+      font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 2px 8px; border-radius: 2px;
+      border: 1px solid var(--border);
+      background: var(--bg-sub);
+      color: var(--text-2);
+    }
+    .dc-badge-cyan { background: var(--accent-dim); border-color: var(--accent-border); color: var(--accent); }
+    .dc-badge-green { background: rgba(16,185,129,0.08); border-color: rgba(16,185,129,0.3); color: #10b981; }
+    .dc-badge-amber { background: rgba(245,158,11,0.08); border-color: rgba(245,158,11,0.3); color: #f59e0b; }
+    .dc-badge-red   { background: rgba(239,68,68,0.08); border-color: rgba(239,68,68,0.3); color: #ef4444; }
+
+    /* ─── TAB ─────────────────────────────────────────────────────────────── */
+    .dc-tab {
+      padding: 8px 14px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+      border: none; background: none; cursor: pointer; border-bottom: 2px solid transparent;
+      color: var(--text-3); transition: all 0.15s;
+    }
+    .dc-tab-active { color: var(--accent); border-bottom-color: var(--accent); }
+    .dc-tab:not(.dc-tab-active):hover { color: var(--text-2); }
+
+    /* ─── SECTION HEADERS ─────────────────────────────────────────────────── */
+    .dc-section-label {
+      font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--accent); margin-bottom: 4px;
+    }
+    .dc-h1 { font-size: 22px; font-weight: 800; color: var(--text); letter-spacing: -0.02em; }
+    .dc-h2 { font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+    .dc-body { font-size: 13px; color: var(--text-2); line-height: 1.6; }
+
+    /* ─── MISC ────────────────────────────────────────────────────────────── */
+    .dc-divider { height: 1px; background: var(--border); }
+    .dc-sub-card {
+      background: var(--bg-sub); border: 1px solid var(--border); border-radius: 4px;
+      transition: background 0.2s;
+    }
+    .dc-accent-left { border-left: 2px solid var(--accent); }
+    .dc-toggle {
+      width: 36px; height: 20px; border-radius: 10px; border: 1.5px solid var(--border);
+      background: var(--bg-sub); position: relative; cursor: pointer; transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .dc-toggle.on { background: var(--accent); border-color: var(--accent); }
+    .dc-toggle::after {
+      content: ''; position: absolute; top: 2px; left: 2px;
+      width: 12px; height: 12px; border-radius: 50%; background: white;
+      transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .dc-toggle.on::after { transform: translateX(16px); }
   </style>
 </head>
 <body>
@@ -555,31 +743,15 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
     // ─── UI PRIMITIVES ───────────────────────────────────────────────────────
 
     function Badge({ children, color = 'slate' }) {
-      const colors = {
-        slate: 'bg-slate-100 text-slate-600',
-        indigo: 'bg-indigo-100 text-indigo-700',
-        emerald: 'bg-emerald-100 text-emerald-700',
-        amber: 'bg-amber-100 text-amber-700',
-        violet: 'bg-violet-100 text-violet-700',
-        red: 'bg-red-100 text-red-600',
-      };
-      return <span className={`inline-block text-xs px-2 py-0.5 rounded-full font-medium ${colors[color]}`}>{children}</span>;
+      const cls = { slate: '', indigo: 'dc-badge-cyan', emerald: 'dc-badge-green', amber: 'dc-badge-amber', violet: 'dc-badge-cyan', red: 'dc-badge-red' };
+      return <span className={`dc-badge ${cls[color] || ''}`}>{children}</span>;
     }
 
     function Btn({ onClick, disabled, children, variant = 'primary', size = 'md', className = '' }) {
-      const base = 'inline-flex items-center gap-1.5 font-medium rounded-lg transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-40 disabled:cursor-not-allowed';
-      const sizes = { sm: 'text-xs px-3 py-1.5', md: 'text-sm px-4 py-2', lg: 'text-sm px-5 py-2.5' };
-      const variants = {
-        primary: 'bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500 shadow-sm',
-        secondary: 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 focus:ring-slate-300',
-        ghost: 'text-slate-500 hover:text-slate-700 hover:bg-slate-100 focus:ring-slate-300',
-        success: 'bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-500 shadow-sm',
-        danger: 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 focus:ring-red-300',
-        dark: 'bg-slate-800 text-white hover:bg-slate-900 focus:ring-slate-500 shadow-sm',
-        violet: 'bg-violet-600 text-white hover:bg-violet-700 focus:ring-violet-500 shadow-sm',
-      };
+      const sz = { sm: 'dc-btn-sm', md: 'dc-btn-md', lg: 'dc-btn-lg' };
+      const va = { primary: 'dc-btn-primary', secondary: 'dc-btn-secondary', ghost: 'dc-btn-ghost', success: 'dc-btn-success', dark: 'dc-btn-dark', danger: 'dc-btn-secondary', violet: 'dc-btn-primary' };
       return (
-        <button onClick={onClick} disabled={disabled} className={`${base} ${sizes[size]} ${variants[variant]} ${className}`}>
+        <button onClick={onClick} disabled={disabled} className={`dc-btn ${sz[size] || 'dc-btn-md'} ${va[variant] || 'dc-btn-primary'} ${className}`}>
           {children}
         </button>
       );
@@ -588,10 +760,9 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
     function Input({ label, value, onChange, placeholder, type = 'text', hint }) {
       return (
         <div>
-          {label && <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>}
-          <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white placeholder-slate-300" />
-          {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
+          {label && <label className="dc-label">{label}</label>}
+          <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="dc-input" />
+          {hint && <p className="dc-hint">{hint}</p>}
         </div>
       );
     }
@@ -599,10 +770,9 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
     function Textarea({ label, value, onChange, placeholder, rows = 3, hint }) {
       return (
         <div>
-          {label && <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>}
-          <textarea value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={rows}
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white placeholder-slate-300 resize-none" />
-          {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
+          {label && <label className="dc-label">{label}</label>}
+          <textarea value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={rows} className="dc-textarea" />
+          {hint && <p className="dc-hint">{hint}</p>}
         </div>
       );
     }
@@ -610,9 +780,8 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
     function Select({ label, value, onChange, options }) {
       return (
         <div>
-          {label && <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>}
-          <select value={value} onChange={e => onChange(e.target.value)}
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+          {label && <label className="dc-label">{label}</label>}
+          <select value={value} onChange={e => onChange(e.target.value)} className="dc-select">
             {options.map(o => <option key={o.value || o} value={o.value || o}>{o.label || o}</option>)}
           </select>
         </div>
@@ -620,17 +789,14 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
     }
 
     function Card({ children, className = '' }) {
-      return <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm ${className}`}>{children}</div>;
+      return <div className={`dc-card ${className}`}>{children}</div>;
     }
 
-    function Spinner() { return <span className="spin">↻</span>; }
+    function Spinner() { return <span className="spin" style={{ color: 'var(--accent)' }}>↻</span>; }
 
     function Tab({ active, onClick, children }) {
       return (
-        <button onClick={onClick}
-          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-            active ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-          }`}>
+        <button onClick={onClick} className={`dc-tab ${active ? 'dc-tab-active' : ''}`}>
           {children}
         </button>
       );
@@ -646,26 +812,33 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
         { n: 4, label: 'Export' },
       ];
       return (
-        <div className="flex items-center">
-          {steps.map((s, i) => (
-            <React.Fragment key={s.n}>
-              <button onClick={() => s.n <= maxReached && onChange(s.n)} disabled={s.n > maxReached}
-                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all ${
-                  current === s.n ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200' :
-                  s.n < current ? 'text-emerald-600 hover:bg-emerald-50 cursor-pointer' :
-                  s.n <= maxReached ? 'text-slate-500 hover:bg-slate-100 cursor-pointer' : 'text-slate-300 cursor-not-allowed'
-                }`}>
-                <span className={`w-5 h-5 rounded-full text-xs flex items-center justify-center border-2 font-bold flex-shrink-0 ${
-                  current === s.n ? 'border-white/60 text-white' :
-                  s.n < current ? 'border-emerald-400 text-emerald-600' : 'border-current'
-                }`}>
-                  {s.n < current ? '✓' : s.n}
-                </span>
-                <span className="hidden sm:inline">{s.label}</span>
-              </button>
-              {i < steps.length - 1 && <div className={`flex-1 h-px mx-1 transition-colors ${s.n < current ? 'bg-emerald-300' : 'bg-slate-200'}`} />}
-            </React.Fragment>
-          ))}
+        <div className="flex items-center gap-1">
+          {steps.map((s, i) => {
+            const isActive = current === s.n;
+            const isDone = s.n < current;
+            const isAvail = s.n <= maxReached;
+            return (
+              <React.Fragment key={s.n}>
+                <button
+                  onClick={() => isAvail && onChange(s.n)}
+                  disabled={!isAvail}
+                  className="dc-step-btn"
+                  style={{
+                    background: isActive ? 'var(--step-active-bg)' : 'transparent',
+                    color: isActive ? 'var(--step-active-text)' : isDone ? 'var(--step-done-text)' : isAvail ? 'var(--text-2)' : 'var(--text-3)',
+                    cursor: isAvail ? 'pointer' : 'not-allowed',
+                  }}>
+                  <span className="dc-step-num" style={{ borderColor: isActive ? 'var(--step-active-text)' : isDone ? 'var(--accent)' : 'currentColor' }}>
+                    {isDone ? '✓' : s.n}
+                  </span>
+                  <span className="hidden sm:inline">{s.label}</span>
+                </button>
+                {i < steps.length - 1 && (
+                  <div className="dc-step-line" style={{ background: isDone ? 'var(--step-line-done)' : 'var(--step-line)' }} />
+                )}
+              </React.Fragment>
+            );
+          })}
         </div>
       );
     }
@@ -2125,25 +2298,55 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
 
       // No forced settings open — API key is optional (only needed for AI generation)
 
+      const [darkMode, setDarkMode] = useState(() => {
+        try { return localStorage.getItem('nads_dark') === 'true'; } catch { return false; }
+      });
+      const toggleDark = () => setDarkMode(d => {
+        const next = !d;
+        try { localStorage.setItem('nads_dark', String(next)); } catch {}
+        return next;
+      });
+
       const goTo = (n) => { setStep(n); setMaxReached(p => Math.max(p, n)); };
       const skipToImages = () => goTo(3);
       const saveConfig = (c) => { setConfig(c); setShowSettings(false); try { localStorage.setItem('nads_cfg', JSON.stringify(c)); } catch {} };
 
       return (
-        <div className="min-h-screen bg-slate-100">
-          <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
+        <div className={`min-h-screen${darkMode ? ' dark-mode' : ''}`} style={{ background: 'var(--bg)', color: 'var(--text)' }}>
+          {/* Gradient top bar */}
+          <div className="dc-topbar" />
+
+          {/* Header — always dark, Decide-style */}
+          <header className="dc-header">
             <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
               <div className="flex items-center gap-3 min-w-0 flex-shrink-0">
-                <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">N</div>
-                <div className="min-w-0">
-                  <span className="font-semibold text-slate-800 text-sm">Native Ad Studio</span>
-                  {brief.offerName && <span className="ml-2 text-xs text-slate-400 hidden sm:inline">— {brief.offerName}</span>}
-                </div>
+                <span style={{ fontWeight: 900, fontSize: 15, color: '#fff', letterSpacing: '-0.03em', fontFamily: 'Inter, sans-serif' }}>
+                  <span style={{ color: 'var(--accent)' }}>D</span>ecide
+                  <span style={{ color: '#555', fontWeight: 400, margin: '0 6px' }}>·</span>
+                  <span style={{ color: '#aaa', fontWeight: 600 }}>Native Ad Studio</span>
+                </span>
+                {brief.offerName && <span style={{ fontSize: 11, color: '#555', fontWeight: 500 }} className="hidden sm:inline">— {brief.offerName}</span>}
               </div>
               <div className="flex-1 flex justify-center px-4 hidden md:flex">
                 <StepNav current={step} maxReached={maxReached} onChange={goTo} />
               </div>
-              <Btn onClick={() => setShowSettings(true)} variant="secondary" size="sm">⚙ Settings</Btn>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={toggleDark}
+                  title={darkMode ? 'Switch to light' : 'Switch to dark'}
+                  style={{ background: 'none', border: '1.5px solid #333', borderRadius: 3, padding: '4px 10px', color: '#888', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'Inter, sans-serif', transition: 'all 0.15s' }}
+                  onMouseEnter={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.color = 'var(--accent)'; }}
+                  onMouseLeave={e => { e.target.style.borderColor = '#333'; e.target.style.color = '#888'; }}>
+                  {darkMode ? '☀ Light' : '◐ Dark'}
+                </button>
+                <button
+                  onClick={() => setShowSettings(true)}
+                  style={{ background: 'none', border: '1.5px solid #333', borderRadius: 3, padding: '4px 10px', color: '#888', fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer', fontFamily: 'Inter, sans-serif', transition: 'all 0.15s' }}
+                  onMouseEnter={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.color = 'var(--accent)'; }}
+                  onMouseLeave={e => { e.target.style.borderColor = '#333'; e.target.style.color = '#888'; }}>
+                  ⚙ Settings
+                </button>
+              </div>
             </div>
             <div className="md:hidden px-4 pb-3">
               <StepNav current={step} maxReached={maxReached} onChange={goTo} />
@@ -2157,8 +2360,8 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
               {step === 3 && <Step3 brief={brief} state={imageState} setState={setImageState} config={config} onNext={() => goTo(4)} onBack={() => goTo(2)} />}
               {step === 4 && <Step4 brief={brief} headlineState={headlineState} setHeadlineState={setHeadlineState} imageState={imageState} onBack={() => goTo(3)} onGoToBrief={() => goTo(1)} onGoToHeadlines={() => goTo(2)} config={config} />}
             </Card>
-            <p className="text-center text-xs text-slate-400 mt-4">
-              API keys stored locally in your browser · Powered by Gem Creative Specialist
+            <p className="text-center mt-4" style={{ fontSize: 11, color: 'var(--text-3)' }}>
+              API keys stored locally · Powered by Gem Creative Specialist
             </p>
           </main>
 
