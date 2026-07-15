@@ -231,7 +231,7 @@ Return exactly 5 prompts, one per line, no numbering.`;
 
     // Fetch related queries from SerpAPI Google Trends (US, trailing 7 days)
     // Cache keyed by broad offer CATEGORY for 2 days — many similar offers share one search.
-    const TRENDS_CACHE_TTL = 2 * 24 * 60 * 60 * 1000; // 2 days in ms
+    const TRENDS_CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
 
     async function fetchTrendsData(offerName, serpApiKey) {
       const category = classifyOffer(offerName);
@@ -790,7 +790,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
                       <span className="text-sm font-semibold text-violet-800">✦ Suggest Angles from Trends</span>
                       {config.serpApiKey
                         ? (trendsFromCache
-                          ? <span className="text-xs bg-amber-100 text-amber-700 font-medium px-2 py-0.5 rounded-full" title={`Cached ${trendsCachedAt ? trendsCachedAt.toLocaleDateString() : ''} — refreshes after 2 days`}>Cached (no search used)</span>
+                          ? <span className="text-xs bg-amber-100 text-amber-700 font-medium px-2 py-0.5 rounded-full" title={`Cached ${trendsCachedAt ? trendsCachedAt.toLocaleDateString() : ''} — refreshes after 7 days`}>Cached (no search used)</span>
                           : <span className="text-xs bg-emerald-100 text-emerald-700 font-medium px-2 py-0.5 rounded-full">Live data</span>)
                         : <span className="text-xs bg-slate-100 text-slate-500 font-medium px-2 py-0.5 rounded-full">AI knowledge</span>
                       }
