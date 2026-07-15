@@ -1954,7 +1954,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
 
       const goTo = (n) => { setStep(n); setMaxReached(p => Math.max(p, n)); };
       const skipToImages = () => goTo(3);
-      const saveConfig = (c) => { setConfig(c); setShowSettings(false); };
+      const saveConfig = (c) => { setConfig(c); setShowSettings(false); try { localStorage.setItem('nads_cfg', JSON.stringify(c)); } catch {} };
 
       return (
         <div className="min-h-screen bg-slate-100">
