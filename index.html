@@ -257,8 +257,15 @@
     .dark-mode .bg-white           { background-color: var(--bg-card) !important; }
     .dark-mode .bg-slate-50,
     .dark-mode .bg-slate-100       { background-color: var(--bg-sub) !important; }
-    .dark-mode .bg-indigo-50       { background-color: rgba(99,102,241,0.12) !important; }
-    .dark-mode .bg-violet-50       { background-color: rgba(139,92,246,0.12) !important; }
+    .dark-mode .bg-indigo-50       { background-color: rgba(79,70,229,0.22)   !important; }
+    .dark-mode .bg-violet-50       { background-color: rgba(109,40,217,0.28)  !important; }
+    /* Gradient box: Suggest Angles panel */
+    .dark-mode .from-violet-50 {
+      --tw-gradient-from: rgba(109,40,217,0.38);
+      --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to, rgba(109,40,217,0));
+    }
+    .dark-mode .to-indigo-50 { --tw-gradient-to: rgba(79,70,229,0.28); }
+    .dark-mode .border-violet-100  { border-color: rgba(139,92,246,0.35) !important; }
     .dark-mode .bg-emerald-50      { background-color: rgba(52,211,153,0.1)  !important; }
     .dark-mode .bg-amber-50        { background-color: rgba(251,191,36,0.1)  !important; }
     .dark-mode .bg-red-50          { background-color: rgba(248,113,113,0.1) !important; }
