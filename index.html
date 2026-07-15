@@ -707,7 +707,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
 
     // ─── STEP 1: BRIEF ───────────────────────────────────────────────────────
 
-    function Step1({ brief, onChange, onNext, config }) {
+    function Step1({ brief, onChange, onNext, onSkipToImages, config }) {
       const [trendsLoading, setTrendsLoading] = useState(false);
       const [trendsError, setTrendsError] = useState('');
       const [suggestions, setSuggestions] = useState([]);
