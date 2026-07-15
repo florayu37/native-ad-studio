@@ -191,7 +191,18 @@ Return exactly 5 prompts, one per line, no numbering.`;
     // ─── TRENDS + ANGLE SUGGESTIONS ──────────────────────────────────────────
 
     // Fetch related queries from SerpAPI Google Trends (US, past 3 months)
+    // Results are cached in localStorage for 7 days to conserve the monthly quota.
+    const TRENDS_CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
+
     async function fetchTrendsData(query, serpApiKey) {
+      const cacheKey = `nas_trends_${query.trim().toLowerCase()}`;
+      try {
+        const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+        if (cached && (Date.now() - cached.ts) < TRENDS_CACHE_TTL) {
+          return { ...cached.data, fromCache: true, cachedAt: new Date(cached.ts) };
+        }
+      } catch {}
+
       const params = new URLSearchParams({
         engine: 'google_trends',
         q: query,
@@ -208,7 +219,9 @@ Return exactly 5 prompts, one per line, no numbering.`;
       const data = await res.json();
       const rising = (data.related_queries?.rising || []).slice(0, 10).map(q => q.query);
       const top    = (data.related_queries?.top    || []).slice(0, 10).map(q => q.query);
-      return { rising, top };
+      const result = { rising, top };
+      try { localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: result })); } catch {}
+      return result;
     }
 
     // Generate angle suggestions via Claude, with optional real trends data injected
@@ -656,6 +669,8 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       const [trendsLoading, setTrendsLoading] = useState(false);
       const [trendsError, setTrendsError] = useState('');
       const [suggestions, setSuggestions] = useState([]);
+      const [trendsFromCache, setTrendsFromCache] = useState(false);
+      const [trendsCachedAt, setTrendsCachedAt] = useState(null);
 
       const valid = brief.offerName.trim();
 
@@ -671,6 +686,8 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
         setTrendsLoading(true);
         setTrendsError('');
         setSuggestions([]);
+        setTrendsFromCache(false);
+        setTrendsCachedAt(null);
         try {
           let trendsData = { rising: [], top: [] };
           let hasTrendsData = false;
@@ -678,6 +695,10 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
             try {
               trendsData = await fetchTrendsData(brief.offerName, config.serpApiKey);
               hasTrendsData = true;
+              if (trendsData.fromCache) {
+                setTrendsFromCache(true);
+                setTrendsCachedAt(trendsData.cachedAt);
+              }
             } catch (e) {
               // SerpAPI failed — fall back to Claude knowledge silently
               console.warn('Google Trends fetch failed:', e.message);
@@ -726,7 +747,9 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-semibold text-violet-800">✦ Suggest Angles from Trends</span>
                       {config.serpApiKey
-                        ? <span className="text-xs bg-emerald-100 text-emerald-700 font-medium px-2 py-0.5 rounded-full">Live data</span>
+                        ? (trendsFromCache
+                          ? <span className="text-xs bg-amber-100 text-amber-700 font-medium px-2 py-0.5 rounded-full" title={`Cached ${trendsCachedAt ? trendsCachedAt.toLocaleDateString() : ''} — refreshes after 7 days`}>Cached (no search used)</span>
+                          : <span className="text-xs bg-emerald-100 text-emerald-700 font-medium px-2 py-0.5 rounded-full">Live data</span>)
                         : <span className="text-xs bg-slate-100 text-slate-500 font-medium px-2 py-0.5 rounded-full">AI knowledge</span>
                       }
                     </div>
