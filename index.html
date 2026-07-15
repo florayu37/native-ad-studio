@@ -839,7 +839,11 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
             </div>
           </div>
 
-          <div className="flex justify-end pt-2">
+          <div className="flex items-center justify-between pt-2">
+            <button onClick={onSkipToImages}
+              className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2 transition-colors">
+              Image processing only →
+            </button>
             <Btn onClick={onNext} disabled={!valid} size="lg">Next: Headlines →</Btn>
           </div>
         </div>
@@ -1542,9 +1546,13 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       return `<div style="font-family:sans-serif;font-size:14px;line-height:1.7">${parts.join('\n')}</div>`;
     }
 
-    function Step4({ brief, headlineState, setHeadlineState, imageState, onBack, config }) {
-      const { selected: selectedRaw, universalDesc, launchPackage = [] } = headlineState;
+    function Step4({ brief, headlineState, setHeadlineState, imageState, onBack, onGoToBrief, onGoToHeadlines, config }) {
+      const { selected: selectedRaw, universalDesc, launchPackage = [], clientTrafficText = '', clientPollText = '' } = headlineState;
       const { images } = imageState;
+
+      const briefComplete = !!brief.offerName.trim();
+      const headlinesComplete = selectedRaw.length > 0 || clientTrafficText.trim() || clientPollText.trim();
+      const canExport = briefComplete && headlinesComplete;
 
       const [traits, setTraits] = useState({
         description: universalDesc || '',
@@ -1880,13 +1888,27 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
             </div>
           </div>
 
+          {!canExport && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800 flex flex-col gap-1">
+              <span className="font-semibold">Complete required steps to export</span>
+              <div className="flex flex-col gap-0.5 text-xs text-amber-700">
+                {!briefComplete && (
+                  <span>• <button onClick={onGoToBrief} className="underline underline-offset-2 hover:text-amber-900">Step 1: Campaign Brief</button> — offer name required</span>
+                )}
+                {!headlinesComplete && (
+                  <span>• <button onClick={onGoToHeadlines} className="underline underline-offset-2 hover:text-amber-900">Step 2: Headlines</button> — add or select at least one headline</span>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-between items-center pt-2">
             <Btn onClick={onBack} variant="ghost">← Back</Btn>
             <div className="flex gap-2">
-              <Btn onClick={copyToClipboard} variant={copied ? 'success' : 'secondary'} size="lg">
+              <Btn onClick={copyToClipboard} disabled={!canExport} variant={copied ? 'success' : 'secondary'} size="lg">
                 {copied ? '✓ Copied to Clipboard' : '⎘ Copy Brief'}
               </Btn>
-              <Btn onClick={downloadBrief} variant="primary" size="lg">↓ Download Brief</Btn>
+              <Btn onClick={downloadBrief} disabled={!canExport} variant="primary" size="lg">↓ Download Brief</Btn>
             </div>
           </div>
         </div>
@@ -1931,6 +1953,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       // No forced settings open — API key is optional (only needed for AI generation)
 
       const goTo = (n) => { setStep(n); setMaxReached(p => Math.max(p, n)); };
+      const skipToImages = () => goTo(3);
       const saveConfig = (c) => { setConfig(c); setShowSettings(false); };
 
       return (
@@ -1956,10 +1979,10 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
 
           <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
             <Card className="p-6 sm:p-8">
-              {step === 1 && <Step1 brief={brief} onChange={setBrief} onNext={() => goTo(2)} config={config} />}
+              {step === 1 && <Step1 brief={brief} onChange={setBrief} onNext={() => goTo(2)} onSkipToImages={skipToImages} config={config} />}
               {step === 2 && <Step2 brief={brief} state={headlineState} setState={setHeadlineState} config={config} onNext={() => goTo(3)} onBack={() => goTo(1)} />}
               {step === 3 && <Step3 brief={brief} state={imageState} setState={setImageState} config={config} onNext={() => goTo(4)} onBack={() => goTo(2)} />}
-              {step === 4 && <Step4 brief={brief} headlineState={headlineState} setHeadlineState={setHeadlineState} imageState={imageState} onBack={() => goTo(3)} config={config} />}
+              {step === 4 && <Step4 brief={brief} headlineState={headlineState} setHeadlineState={setHeadlineState} imageState={imageState} onBack={() => goTo(3)} onGoToBrief={() => goTo(1)} onGoToHeadlines={() => goTo(2)} config={config} />}
             </Card>
             <p className="text-center text-xs text-slate-400 mt-4">
               API keys stored locally in your browser · Powered by Gem Creative Specialist
