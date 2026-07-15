@@ -422,8 +422,21 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       } catch { return null; }
     }
 
+    // Apply manual crop coords to a static image file → JPEG data URL at 1600×900
+    async function applyManualCropToFile(file, cropCoords) {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement('canvas');
+      canvas.width = 1600; canvas.height = 900;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, cropCoords.x, cropCoords.y, cropCoords.w, cropCoords.h, 0, 0, 1600, 900);
+      return canvas.toDataURL('image/jpeg', 0.92);
+    }
+
     // Process an animated GIF: smart-crop all frames and re-encode
-    async function processAnimatedGIF(gifData, targetW, targetH, withPlayButton = false) {
+    async function processAnimatedGIF(gifData, targetW, targetH, withPlayButton = false, manualCrop = null) {
       const { parsed, frames } = gifData;
       const srcW = parsed.lsd.width;
       const srcH = parsed.lsd.height;
@@ -441,7 +454,9 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
 
       // Determine crop coords
       let crop;
-      if (window.smartcrop) {
+      if (manualCrop) {
+        crop = { x: manualCrop.x, y: manualCrop.y, width: manualCrop.w, height: manualCrop.h };
+      } else if (window.smartcrop) {
         const result = await smartcrop.crop(firstCanvas, { width: targetW, height: targetH });
         crop = result.topCrop;
       } else {
@@ -1109,6 +1124,131 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       );
     }
 
+    // ─── CROP MODAL ──────────────────────────────────────────────────────────
+
+    function CropModal({ image, onConfirm, onCancel }) {
+      const ASPECT = 16 / 9;
+      const MAX_W = 720, MAX_H = 480;
+      const [dispW, setDispW] = useState(0);
+      const [dispH, setDispH] = useState(0);
+      const [natW, setNatW] = useState(0);
+      const [natH, setNatH] = useState(0);
+      const [box, setBox] = useState(null);
+      const dragRef = useRef(null);
+
+      const initBox = (dw, dh) => {
+        let w = dw * 0.85, h = w / ASPECT;
+        if (h > dh * 0.85) { h = dh * 0.85; w = h * ASPECT; }
+        setBox({ x: (dw - w) / 2, y: (dh - h) / 2, w, h });
+      };
+
+      const onImgLoad = (e) => {
+        const img = e.target;
+        let dw = img.naturalWidth, dh = img.naturalHeight;
+        if (dw > MAX_W) { dh = dh * MAX_W / dw; dw = MAX_W; }
+        if (dh > MAX_H) { dw = dw * MAX_H / dh; dh = MAX_H; }
+        dw = Math.round(dw); dh = Math.round(dh);
+        setNatW(img.naturalWidth); setNatH(img.naturalHeight);
+        setDispW(dw); setDispH(dh);
+        initBox(dw, dh);
+      };
+
+      const clamp = (b) => {
+        let { x, y, w, h } = b;
+        w = Math.max(40, Math.min(w, dispW));
+        h = w / ASPECT;
+        if (h > dispH) { h = dispH; w = h * ASPECT; }
+        x = Math.max(0, Math.min(x, dispW - w));
+        y = Math.max(0, Math.min(y, dispH - h));
+        return { x, y, w, h };
+      };
+
+      const startDrag = (e, type) => {
+        e.preventDefault(); e.stopPropagation();
+        dragRef.current = { type, sx: e.clientX, sy: e.clientY, ob: { ...box } };
+        const move = (ev) => {
+          if (!dragRef.current) return;
+          const { type: t, sx, sy, ob } = dragRef.current;
+          const dx = ev.clientX - sx, dy = ev.clientY - sy;
+          let nb = { ...ob };
+          if (t === 'move') { nb.x = ob.x + dx; nb.y = ob.y + dy; }
+          else if (t === 'se') { nb.w = ob.w + dx; nb.h = nb.w / ASPECT; }
+          else if (t === 'sw') { nb.w = ob.w - dx; nb.x = ob.x + ob.w - nb.w; nb.h = nb.w / ASPECT; }
+          else if (t === 'ne') { nb.w = ob.w + dx; nb.h = nb.w / ASPECT; nb.y = ob.y + ob.h - nb.h; }
+          else if (t === 'nw') { nb.w = ob.w - dx; nb.x = ob.x + ob.w - nb.w; nb.h = nb.w / ASPECT; nb.y = ob.y + ob.h - nb.h; }
+          setBox(clamp(nb));
+        };
+        const up = () => { dragRef.current = null; window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', up);
+      };
+
+      const confirm = () => {
+        if (!box) return;
+        const sx = natW / dispW, sy = natH / dispH;
+        onConfirm({ x: Math.round(box.x * sx), y: Math.round(box.y * sy), w: Math.round(box.w * sx), h: Math.round(box.h * sy) });
+      };
+
+      const HS = 10;
+      const handles = box ? [
+        { id: 'nw', x: box.x - HS/2,       y: box.y - HS/2,       cursor: 'nw-resize' },
+        { id: 'ne', x: box.x + box.w - HS/2, y: box.y - HS/2,     cursor: 'ne-resize' },
+        { id: 'sw', x: box.x - HS/2,       y: box.y + box.h - HS/2, cursor: 'sw-resize' },
+        { id: 'se', x: box.x + box.w - HS/2, y: box.y + box.h - HS/2, cursor: 'se-resize' },
+      ] : [];
+
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl overflow-hidden w-full" style={{ maxWidth: MAX_W + 80 }}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-800">Manual Crop — 16:9</h2>
+                <p className="text-xs text-slate-400 mt-0.5">Drag box to move · corners to resize · ratio locked</p>
+              </div>
+              <Btn onClick={onCancel} variant="ghost" size="sm">✕</Btn>
+            </div>
+            <div className="flex justify-center bg-slate-900 p-4">
+              <div style={{ position: 'relative', display: 'inline-block', userSelect: 'none', lineHeight: 0 }}>
+                <img src={image.preview} onLoad={onImgLoad} style={{ display: 'block', width: dispW || 'auto', height: dispH || 'auto' }} draggable={false} alt="" />
+                {box && dispW > 0 && (
+                  <>
+                    {/* Dim mask — 4 quadrants */}
+                    <div style={{ position:'absolute', top:0, left:0, right:0, height:box.y, background:'rgba(0,0,0,0.55)', pointerEvents:'none' }} />
+                    <div style={{ position:'absolute', top:box.y, left:0, width:box.x, height:box.h, background:'rgba(0,0,0,0.55)', pointerEvents:'none' }} />
+                    <div style={{ position:'absolute', top:box.y, left:box.x+box.w, right:0, height:box.h, background:'rgba(0,0,0,0.55)', pointerEvents:'none' }} />
+                    <div style={{ position:'absolute', top:box.y+box.h, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.55)', pointerEvents:'none' }} />
+                    {/* Crop box */}
+                    <div onMouseDown={e => startDrag(e, 'move')}
+                      style={{ position:'absolute', top:box.y, left:box.x, width:box.w, height:box.h, border:'2px solid white', boxSizing:'border-box', cursor:'move' }}>
+                      {/* Rule-of-thirds */}
+                      {['33.33%','66.66%'].map(p => (
+                        <React.Fragment key={p}>
+                          <div style={{ position:'absolute', left:p, top:0, bottom:0, borderLeft:'1px solid rgba(255,255,255,0.25)', pointerEvents:'none' }} />
+                          <div style={{ position:'absolute', top:p, left:0, right:0, borderTop:'1px solid rgba(255,255,255,0.25)', pointerEvents:'none' }} />
+                        </React.Fragment>
+                      ))}
+                    </div>
+                    {/* Corner handles */}
+                    {handles.map(h => (
+                      <div key={h.id} onMouseDown={e => startDrag(e, h.id)}
+                        style={{ position:'absolute', top:h.y, left:h.x, width:HS, height:HS, background:'white', border:'2px solid #6366f1', borderRadius:2, cursor:h.cursor, zIndex:10 }} />
+                    ))}
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100">
+              <button onClick={() => initBox(dispW, dispH)} className="text-xs text-slate-400 hover:text-slate-600 underline underline-offset-2">Reset</button>
+              <div className="flex gap-2">
+                <Btn onClick={onCancel} variant="secondary" size="sm">Cancel</Btn>
+                <Btn onClick={confirm} size="sm">Apply Crop →</Btn>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     // ─── STEP 3: IMAGES ──────────────────────────────────────────────────────
 
     function Step3({ brief, state, setState, config, onNext, onBack }) {
@@ -1119,6 +1259,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       const [promptError, setPromptError] = useState('');
       const [driveError, setDriveError] = useState('');
       const [folderId, setFolderId] = useState('');
+      const [cropTarget, setCropTarget] = useState(null);
       const tokenClientRef = useRef(null);
       const fileRef = useRef();
 
@@ -1160,15 +1301,27 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
             // ── Step 1: crop / resize base image (skip if already done) ────────
             let dataUrl = img.processed, ext = img._ext || 'jpg', gifData = img._gifData;
             if (!dataUrl) {
-              const result = await processImage(img.file);
-              dataUrl = result.dataUrl; ext = result.ext; gifData = result.gifData;
+              const isGif = img.file?.type === 'image/gif';
+              if (img.manualCrop) {
+                if (isGif) {
+                  if (!gifData) { gifData = await getAnimatedGIFData(img.file); }
+                  dataUrl = await processAnimatedGIF(gifData, 1600, 900, false, img.manualCrop);
+                  ext = 'gif';
+                } else {
+                  dataUrl = await applyManualCropToFile(img.file, img.manualCrop);
+                  ext = 'jpg';
+                }
+              } else {
+                const result = await processImage(img.file);
+                dataUrl = result.dataUrl; ext = result.ext; gifData = result.gifData;
+              }
             }
 
             // ── Step 2: generate play-button variant if toggled and not yet done
             let playVariant = img.playVariant || null;
             if (createPlayVariations && !playVariant) {
               if (ext === 'gif' && gifData) {
-                playVariant = await processAnimatedGIF(gifData, 1600, 900, true);
+                playVariant = await processAnimatedGIF(gifData, 1600, 900, true, img.manualCrop || null);
               } else {
                 playVariant = await addPlayButtonOverlay(dataUrl);
               }
@@ -1264,6 +1417,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       const allProcessed = images.length > 0 && images.every(img => img.processed || img.processedError);
 
       return (
+        <>
         <div className="fade-in space-y-6">
           <div className="flex items-start justify-between">
             <div>
@@ -1311,12 +1465,13 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-medium text-slate-700 truncate">{img.processedName || img.name}</p>
                             <p className="text-xs text-slate-400">
-                              {img.processedError ? '⚠ Processing failed' : img.processed ? `✓ 1600×900 ${img._ext === 'gif' ? 'GIF' : 'JPEG'}` : 'Original'}
+                              {img.processedError ? '⚠ Processing failed' : img.processed ? `✓ 1600×900 ${img._ext === 'gif' ? 'GIF' : 'JPEG'}` : img.manualCrop ? '✂ Custom crop set' : 'Original'}
                             </p>
                           </div>
                           {st === 'uploading' && <span className="text-xs text-blue-500 flex-shrink-0"><Spinner /></span>}
                           {st === 'done' && <span className="text-xs text-emerald-500 flex-shrink-0">✓ Drive</span>}
                           {st === 'error' && <span className="text-xs text-red-400 flex-shrink-0">✗</span>}
+                          <button onClick={() => setCropTarget(img)} title="Manual crop" className="text-slate-300 hover:text-violet-500 transition-colors text-sm flex-shrink-0 opacity-0 group-hover:opacity-100">✂</button>
                           {img.processed && (
                             <button onClick={() => downloadImage(img)} title="Download" className="text-slate-300 hover:text-indigo-500 transition-colors text-base flex-shrink-0 opacity-0 group-hover:opacity-100">↓</button>
                           )}
@@ -1416,6 +1571,24 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
             <Btn onClick={onNext} size="lg">Next: Export →</Btn>
           </div>
         </div>
+
+        {cropTarget && (
+          <CropModal
+            image={cropTarget}
+            onConfirm={(coords) => {
+              setState(p => ({
+                ...p,
+                images: p.images.map(img => img.id === cropTarget.id
+                  ? { ...img, manualCrop: coords, processed: null, processedName: null, playVariant: null, playVariantName: null }
+                  : img
+                )
+              }));
+              setCropTarget(null);
+            }}
+            onCancel={() => setCropTarget(null)}
+          />
+        )}
+        </>
       );
     }
 
