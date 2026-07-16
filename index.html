@@ -2291,7 +2291,7 @@ function StockImageFinder({ brief, config, onAddFile, onRemoveUrl, addedUrls = n
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-medium text-slate-700 truncate">{img.processedName || img.name}</p>
                             <p className="text-xs text-slate-400">
-                              {img.processedError ? '⚠ Processing failed' : img.processed ? outputSize ? `✓ ${outputSize.w}×${outputSize.h} ${img._ext === 'gif' ? 'GIF' : 'JPEG'}` : '—' : img.manualCrop ? '✂ Custom crop set' : 'Original'}
+                              {img.processedError ? '⚠ Processing failed' : img.processed ? outputSize ? `✓ ${outputSize.w}×${outputSize.h} ${img._ext === 'gif' ? 'GIF' : img._ext === 'png' ? 'PNG' : 'JPEG'}` : '—' : img.manualCrop ? '✂ Custom crop set' : 'Original'}
                             </p>
                           </div>
                           {st === 'uploading' && <span className="text-xs text-blue-500 flex-shrink-0"><Spinner /></span>}
