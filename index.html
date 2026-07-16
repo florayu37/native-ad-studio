@@ -1675,9 +1675,9 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       { id: 'pexels',    label: 'Pexels',            color: '#059669' },
     ];
 
-    async function searchWikimedia(q) {
+    async function searchWikimedia(q, limit = 12) {
       const srRes = await fetch(
-        `https://commons.wikimedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}+filetype:bitmap&srnamespace=6&srlimit=15&format=json&origin=*`
+        `https://commons.wikimedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}+filetype:bitmap&srnamespace=6&srlimit=${limit}&format=json&origin=*`
       );
       const srData = await srRes.json();
       const titles = (srData.query?.search || []).map(r => r.title).join('|');
@@ -1696,10 +1696,10 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
         }));
     }
 
-    async function searchPixabay(q, apiKey) {
+    async function searchPixabay(q, apiKey, limit = 12) {
       if (!apiKey) throw new Error('Add a Pixabay API key in Settings to search Pixabay.');
       const res = await fetch(
-        `https://pixabay.com/api/?key=${apiKey}&q=${encodeURIComponent(q)}&image_type=photo&orientation=horizontal&per_page=12&safesearch=true`
+        `https://pixabay.com/api/?key=${apiKey}&q=${encodeURIComponent(q)}&image_type=photo&orientation=horizontal&per_page=${limit}&safesearch=true`
       );
       if (!res.ok) throw new Error(`Pixabay error ${res.status}`);
       const data = await res.json();
@@ -1711,10 +1711,10 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       }));
     }
 
-    async function searchPexels(q, apiKey) {
+    async function searchPexels(q, apiKey, limit = 12) {
       if (!apiKey) throw new Error('Add a Pexels API key in Settings to search Pexels.');
       const res = await fetch(
-        `https://api.pexels.com/v1/search?query=${encodeURIComponent(q)}&per_page=12&orientation=landscape`,
+        `https://api.pexels.com/v1/search?query=${encodeURIComponent(q)}&per_page=${limit}&orientation=landscape`,
         { headers: { Authorization: apiKey } }
       );
       if (!res.ok) throw new Error(`Pexels error ${res.status}`);
@@ -1728,28 +1728,27 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
     }
 
 function StockImageFinder({ brief, config, onAddFile }) {
-      const [sources, setSources] = useState(new Set(['wikimedia']));
+      const [sources, setSources] = useState(['wikimedia']);
       const [query, setQuery] = useState(brief?.offerName || '');
+      const [perSource, setPerSource] = useState(12);
       const [loading, setLoading] = useState(false);
       const [results, setResults] = useState([]);
       const [errors, setErrors] = useState([]);
       const [added, setAdded] = useState(new Set());
       const [adding, setAdding] = useState(new Set());
 
-      const toggleSource = (id) => setSources(prev => {
-        const next = new Set(prev);
-        next.has(id) ? next.delete(id) : next.add(id);
-        return next;
-      });
+      const toggleSource = (id) => setSources(prev =>
+        prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
+      );
 
       const doSearch = async () => {
-        if (!query.trim() || sources.size === 0) return;
+        if (!query.trim() || sources.length === 0) return;
         setLoading(true); setResults([]); setErrors([]); setAdded(new Set());
         const errs = [];
         const all = await Promise.all([
-          sources.has('wikimedia') ? searchWikimedia(query).catch(e => { errs.push('Wikimedia: ' + e.message); return []; }) : [],
-          sources.has('pixabay')   ? searchPixabay(query, config.pixabayApiKey).catch(e => { errs.push(e.message); return []; }) : [],
-          sources.has('pexels')    ? searchPexels(query, config.pexelsApiKey).catch(e => { errs.push(e.message); return []; }) : [],
+          sources.includes('wikimedia') ? searchWikimedia(query, perSource).catch(e => { errs.push('Wikimedia: ' + e.message); return []; }) : [],
+          sources.includes('pixabay')   ? searchPixabay(query, config.pixabayApiKey, perSource).catch(e => { errs.push(e.message); return []; }) : [],
+          sources.includes('pexels')    ? searchPexels(query, config.pexelsApiKey, perSource).catch(e => { errs.push(e.message); return []; }) : [],
         ]);
         setResults(all.flat());
         setErrors(errs);
@@ -1785,17 +1784,29 @@ function StockImageFinder({ brief, config, onAddFile }) {
         <div className="space-y-3 border border-slate-200 rounded-xl p-4" style={{background:'var(--bg-sub)'}}>
           <p className="text-sm font-semibold text-slate-700">Find Stock Images</p>
 
-          {/* Source toggles */}
-          <div className="flex flex-wrap gap-2">
+          {/* Source toggles + result count */}
+          <div className="flex flex-wrap items-center gap-2">
             {STOCK_SOURCES.map(({ id, label, color }) => (
               <button key={id} onClick={() => toggleSource(id)}
                 className="px-3 py-1 text-xs rounded-full border transition-all font-medium"
-                style={sources.has(id)
+                style={sources.includes(id)
                   ? { background: color + '18', borderColor: color, color }
                   : { background: 'var(--bg-card)', borderColor: 'var(--border)', color: 'var(--text-3)' }}>
                 {label}
               </button>
             ))}
+            <div className="ml-auto flex items-center gap-1.5">
+              <span className="text-xs text-slate-400">Per source:</span>
+              {[6, 12, 24].map(n => (
+                <button key={n} onClick={() => setPerSource(n)}
+                  className="px-2 py-0.5 text-xs rounded border transition-all"
+                  style={perSource === n
+                    ? { background: '#6366f1', borderColor: '#6366f1', color: '#fff', fontWeight: 600 }
+                    : { background: 'var(--bg-card)', borderColor: 'var(--border)', color: 'var(--text-3)' }}>
+                  {n}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Search bar */}
@@ -1805,7 +1816,7 @@ function StockImageFinder({ brief, config, onAddFile }) {
               placeholder="Search images…"
               className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
               style={{background:'var(--bg-input)', color:'var(--text)'}} />
-            <Btn onClick={doSearch} disabled={loading || !query.trim() || sources.size === 0} size="sm">
+            <Btn onClick={doSearch} disabled={loading || !query.trim() || sources.length === 0} size="sm">
               {loading ? <Spinner /> : '🔍 Search'}
             </Btn>
           </div>
