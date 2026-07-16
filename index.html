@@ -2118,14 +2118,16 @@ function StockImageFinder({ brief, config, onAddFile, onRemoveUrl, addedUrls = n
 
       const [zipping, setZipping] = useState(false);
       const downloadAllAsZip = async () => {
-        const processed = images.filter(img => img.processed);
-        if (!processed.length) return;
+        const processable = images.filter(img => img.processed || (img.extras || []).length > 0);
+        if (!processable.length) return;
         setZipping(true);
         try {
           const zip = new JSZip();
-          processed.forEach(img => {
-            zip.file(img.processedName, img.processed.split(',')[1], { base64: true });
-            if (img.playVariant) zip.file(img.playVariantName, img.playVariant.split(',')[1], { base64: true });
+          processable.forEach(img => {
+            if (img.processed) {
+              zip.file(img.processedName, img.processed.split(',')[1], { base64: true });
+              if (img.playVariant) zip.file(img.playVariantName, img.playVariant.split(',')[1], { base64: true });
+            }
             (img.extras || []).forEach(ex => {
               zip.file(ex.name, ex.dataUrl.split(',')[1], { base64: true });
               if (ex.playVariant) zip.file(ex.playVariantName, ex.playVariant.split(',')[1], { base64: true });
