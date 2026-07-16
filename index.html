@@ -1799,7 +1799,7 @@ function StockImageFinder({ brief, config, onAddFile }) {
             ))}
             <div className="ml-auto flex items-center gap-1.5">
               <span className="text-xs text-slate-400">Per source:</span>
-              {[6, 16, 24].map(n => (
+              {[8, 16, 24].map(n => (
                 <button key={n} onClick={() => setPerSource(n)}
                   className="px-2 py-0.5 text-xs rounded border transition-all"
                   style={perSource === n
