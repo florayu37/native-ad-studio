@@ -2417,7 +2417,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
                   <Btn onClick={downloadBrief} variant="secondary" size="sm">↓ .txt</Btn>
                 </div>
               </div>
-              <div className="border border-slate-200 rounded-xl bg-slate-50 p-4 max-h-[560px] overflow-y-auto">
+              <div className="border border-slate-200 rounded-xl bg-slate-50 p-4 overflow-y-auto" style={{minHeight:'200px', maxHeight:'560px', resize:'vertical'}}>
                 <pre className="text-xs text-slate-700 whitespace-pre-wrap font-sans leading-relaxed">
                   {briefText.split('\n').map((line, i) => {
                     // Whole-line bold: **headline**
