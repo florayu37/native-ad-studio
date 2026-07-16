@@ -1752,8 +1752,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
         setLoading(true); setError(''); setDone(false);
         try {
           const raw = await callGeminiImageGen(prompt, apiKey);
-          const clean = await removeGeminiWatermark(raw);
-          onImageGenerated(clean);
+          onImageGenerated(raw);  // pipeline removes watermark before resize
           setDone(true);
         } catch (e) { setError(e.message); }
         finally { setLoading(false); }
@@ -2070,8 +2069,6 @@ function StockImageFinder({ brief, config, onAddFile, onRemoveUrl, addedUrls = n
                   const result = await processImage(cleanFile, outputSize.w, outputSize.h);
                   dataUrl = result.dataUrl; ext = result.ext; gifData = result.gifData;
                 }
-              } else if (removeWatermark && ext !== 'gif') {
-                dataUrl = await removeGeminiWatermark(dataUrl);
               }
               // ── Step 2: primary play variant
               if (createPlayVariations) {
@@ -2234,7 +2231,7 @@ function StockImageFinder({ brief, config, onAddFile, onRemoveUrl, addedUrls = n
 
               <label className="flex items-center gap-2.5 cursor-pointer select-none">
                 <div
-                  onClick={() => setState(p => ({ ...p, removeWatermark: !p.removeWatermark }))}
+                  onClick={() => setState(p => ({ ...p, removeWatermark: !p.removeWatermark, images: p.images.map(i => ({...i, processed: null, processedName: null, playVariant: null, playVariantName: null, extras: []})) }))}
                   className={`w-9 h-5 rounded-full transition-colors flex-shrink-0 relative ${removeWatermark ? 'bg-teal-500' : 'bg-slate-200'}`}
                 >
                   <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${removeWatermark ? 'translate-x-4' : 'translate-x-0.5'}`} />
