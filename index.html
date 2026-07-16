@@ -731,13 +731,20 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
           canvas.width = img.width; canvas.height = img.height;
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0);
-          // Watermark region: bottom-right corner, ~7% of the shorter dimension
-          const wmSize = Math.round(Math.min(img.width, img.height) * 0.07);
+          // Watermark region: bottom-right corner, ~9% of shorter dimension
+          const wmSize = Math.round(Math.min(img.width, img.height) * 0.09);
           const x0 = img.width - wmSize;
           const y0 = img.height - wmSize;
-          const sampleY = Math.max(0, y0 - wmSize);
-          const patch = ctx.getImageData(x0, sampleY, wmSize, wmSize);
-          ctx.putImageData(patch, x0, y0);
+          // Sample from above the watermark
+          const patchAbove = ctx.getImageData(x0, Math.max(0, y0 - wmSize), wmSize, wmSize);
+          // Sample from left of the watermark
+          const patchLeft  = ctx.getImageData(Math.max(0, x0 - wmSize), y0, wmSize, wmSize);
+          // Blend both patches 50/50 for a more natural fill
+          const blended = ctx.createImageData(wmSize, wmSize);
+          for (let i = 0; i < blended.data.length; i++) {
+            blended.data[i] = Math.round((patchAbove.data[i] + patchLeft.data[i]) / 2);
+          }
+          ctx.putImageData(blended, x0, y0);
           resolve(canvas.toDataURL('image/png'));
         };
         img.onerror = () => resolve(dataUrl);
@@ -1748,14 +1755,13 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       }));
     }
 
-function StockImageFinder({ brief, config, onAddFile }) {
+function StockImageFinder({ brief, config, onAddFile, addedUrls = new Set() }) {
       const [sources, setSources] = useState(['wikimedia']);
       const [query, setQuery] = useState(brief?.offerName || '');
       const [perSource, setPerSource] = useState(16);
       const [loading, setLoading] = useState(false);
       const [results, setResults] = useState([]);
       const [errors, setErrors] = useState([]);
-      const [added, setAdded] = useState(new Set());
       const [adding, setAdding] = useState(new Set());
 
       const toggleSource = (id) => setSources(prev =>
@@ -1764,7 +1770,7 @@ function StockImageFinder({ brief, config, onAddFile }) {
 
       const doSearch = async () => {
         if (!query.trim() || sources.length === 0) return;
-        setLoading(true); setResults([]); setErrors([]); setAdded(new Set());
+        setLoading(true); setResults([]); setErrors([]);
         const errs = [];
         const all = await Promise.all([
           sources.includes('wikimedia') ? searchWikimedia(query, perSource).catch(e => { errs.push('Wikimedia: ' + e.message); return []; }) : [],
@@ -1777,7 +1783,7 @@ function StockImageFinder({ brief, config, onAddFile }) {
       };
 
       const addImage = async (item) => {
-        if (added.has(item.url) || adding.has(item.url)) return;
+        if (addedUrls.has(item.url) || adding.has(item.url)) return;
         setAdding(prev => new Set([...prev, item.url]));
         try {
           const res = await fetch(item.url);
@@ -1786,8 +1792,7 @@ function StockImageFinder({ brief, config, onAddFile }) {
           const ext = ['jpg','jpeg','png','webp','gif'].includes(rawExt) ? rawExt : 'jpg';
           const slug = item.title.replace(/[^a-z0-9]/gi, '_').slice(0, 40);
           const file = new File([blob], `${item.source}_${slug}.${ext}`, { type: blob.type || 'image/jpeg' });
-          onAddFile(file);
-          setAdded(prev => new Set([...prev, item.url]));
+          onAddFile(file, item.url); // pass sourceUrl so parent can track it
         } catch (e) {
           setErrors(prev => [...prev, `Could not download "${item.title}": ${e.message}`]);
         } finally {
@@ -1852,7 +1857,7 @@ function StockImageFinder({ brief, config, onAddFile }) {
           {results.length > 0 && (
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-80 overflow-y-auto">
               {results.map((item, i) => {
-                const isAdded   = added.has(item.url);
+                const isAdded   = addedUrls.has(item.url);
                 const isAdding  = adding.has(item.url);
                 return (
                   <div key={i}
@@ -2227,10 +2232,15 @@ function StockImageFinder({ brief, config, onAddFile }) {
             </div>
           </div>
 
-          <StockImageFinder brief={brief} config={config} onAddFile={(file) => {
-            const entry = { id: uid(), file, name: file.name, preview: URL.createObjectURL(file), processed: null, processedName: null };
-            setState(p => ({ ...p, images: [...p.images, entry] }));
-          }} />
+          <StockImageFinder
+            brief={brief}
+            config={config}
+            addedUrls={new Set(images.filter(i => i.sourceUrl).map(i => i.sourceUrl))}
+            onAddFile={(file, sourceUrl) => {
+              const entry = { id: uid(), file, name: file.name, preview: URL.createObjectURL(file), sourceUrl: sourceUrl || null, processed: null, processedName: null };
+              setState(p => ({ ...p, images: [...p.images, entry] }));
+            }}
+          />
 
           <div className="flex justify-between pt-2">
             <Btn onClick={onBack} variant="ghost">← Back</Btn>
