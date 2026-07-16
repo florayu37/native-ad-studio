@@ -622,51 +622,46 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       });
     }
 
-    // Draw the white glass play button onto an existing canvas context
-    // Target: ~300px diameter on a 900px-tall image (radius = h/6)
+    // Draw the white play button overlay matching the reference design:
+    // transparent interior, thick white ring, solid white triangle, drop shadow
     function drawPlayButton(ctx, w, h) {
       const cx = w / 2, cy = h / 2;
-      const radius = h / 4;          // 225px radius → 450px diameter on 900px image
-      const borderW = radius * 0.11; // thicker ring, matching reference PNG
+      const radius = h / 4;           // 225px → 450px diameter on 900px image
+      const borderW = radius * 0.10;  // ring thickness
 
-      // Soft outer drop shadow
+      // Drop shadow behind the ring
       ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,0.45)';
-      ctx.shadowBlur = radius * 0.6;
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius + borderW * 0.5, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,255,255,0)';
-      ctx.fill();
-      ctx.restore();
-
-      // White ring
-      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.55)';
+      ctx.shadowBlur = radius * 0.5;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = radius * 0.04;
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(255,255,255,0.97)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.98)';
       ctx.lineWidth = borderW;
       ctx.stroke();
       ctx.restore();
 
-      // Semi-transparent white fill
+      // White ring (no fill — transparent interior)
       ctx.save();
       ctx.beginPath();
-      ctx.arc(cx, cy, radius - borderW * 0.5, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.30)';
-      ctx.fill();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.98)';
+      ctx.lineWidth = borderW;
+      ctx.stroke();
       ctx.restore();
 
-      // Play triangle — compact, offset right slightly
-      const triH = radius * 0.36, triW = triH * 0.85, ox = radius * 0.09;
+      // Solid white triangle, slightly right of center
+      const triH = radius * 0.50, triW = triH * 0.87, ox = radius * 0.08;
       ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,0.12)';
-      ctx.shadowBlur = radius * 0.08;
+      ctx.shadowColor = 'rgba(0,0,0,0.20)';
+      ctx.shadowBlur = radius * 0.10;
       ctx.beginPath();
-      ctx.moveTo(cx + triW * 0.7 + ox, cy);
-      ctx.lineTo(cx - triW * 0.3 + ox, cy - triH);
-      ctx.lineTo(cx - triW * 0.3 + ox, cy + triH);
+      ctx.moveTo(cx + triW * 0.67 + ox, cy);
+      ctx.lineTo(cx - triW * 0.33 + ox, cy - triH);
+      ctx.lineTo(cx - triW * 0.33 + ox, cy + triH);
       ctx.closePath();
-      ctx.fillStyle = 'rgba(255,255,255,0.95)';
+      ctx.fillStyle = 'rgba(255,255,255,1.0)';
       ctx.fill();
       ctx.restore();
     }
