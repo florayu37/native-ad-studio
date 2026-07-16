@@ -731,20 +731,41 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
           canvas.width = img.width; canvas.height = img.height;
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0);
-          // Watermark region: bottom-right corner, ~9% of shorter dimension
-          const wmSize = Math.round(Math.min(img.width, img.height) * 0.09);
+          // Watermark region: bottom-right corner, ~8% of shorter dimension
+          const wmSize = Math.round(Math.min(img.width, img.height) * 0.08);
           const x0 = img.width - wmSize;
           const y0 = img.height - wmSize;
-          // Sample from above the watermark
-          const patchAbove = ctx.getImageData(x0, Math.max(0, y0 - wmSize), wmSize, wmSize);
-          // Sample from left of the watermark
-          const patchLeft  = ctx.getImageData(Math.max(0, x0 - wmSize), y0, wmSize, wmSize);
-          // Blend both patches 50/50 for a more natural fill
-          const blended = ctx.createImageData(wmSize, wmSize);
-          for (let i = 0; i < blended.data.length; i++) {
-            blended.data[i] = Math.round((patchAbove.data[i] + patchLeft.data[i]) / 2);
+
+          // Grab the full image data and do pixel-level inpainting.
+          // For each pixel (i,j) in the watermark box we interpolate between:
+          //   • the clean pixel directly above the box at the same column  (row y0-1)
+          //   • the clean pixel directly left of the box at the same row   (col x0-1)
+          // Weight from above fades toward bottom; weight from left fades toward right.
+          // This produces a smooth gradient fill that continues the surrounding texture
+          // without copying any part of the watermark icon itself.
+          const imgData = ctx.getImageData(0, 0, img.width, img.height);
+          const d = imgData.data;
+          const W = img.width;
+          const get = (x, y) => { const k = (y * W + x) * 4; return [d[k], d[k+1], d[k+2], d[k+3]]; };
+          const set = (x, y, r, g, b, a) => { const k = (y * W + x) * 4; d[k]=r; d[k+1]=g; d[k+2]=b; d[k+3]=a; };
+
+          for (let i = 0; i < wmSize; i++) {
+            for (let j = 0; j < wmSize; j++) {
+              const px = x0 + i, py = y0 + j;
+              const fa = get(px, y0 - 1);  // pixel from clean row above
+              const fl = get(x0 - 1, py);  // pixel from clean column to the left
+              const wA = (wmSize - j) / wmSize; // above weight → 1 at top, 0 at bottom
+              const wL = (wmSize - i) / wmSize; // left  weight → 1 at left, 0 at right
+              const tot = wA + wL || 1;
+              set(px, py,
+                Math.round((fa[0]*wA + fl[0]*wL) / tot),
+                Math.round((fa[1]*wA + fl[1]*wL) / tot),
+                Math.round((fa[2]*wA + fl[2]*wL) / tot),
+                Math.round((fa[3]*wA + fl[3]*wL) / tot)
+              );
+            }
           }
-          ctx.putImageData(blended, x0, y0);
+          ctx.putImageData(imgData, 0, 0);
           resolve(canvas.toDataURL('image/png'));
         };
         img.onerror = () => resolve(dataUrl);
