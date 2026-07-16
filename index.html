@@ -626,7 +626,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
     // Target: ~300px diameter on a 900px-tall image (radius = h/6)
     function drawPlayButton(ctx, w, h) {
       const cx = w / 2, cy = h / 2;
-      const radius = h / 6;          // 150px radius → 300px diameter on 900px image
+      const radius = h / 4;          // 225px radius → 450px diameter on 900px image
       const borderW = radius * 0.11; // thicker ring, matching reference PNG
 
       // Soft outer drop shadow
@@ -652,12 +652,12 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       ctx.save();
       ctx.beginPath();
       ctx.arc(cx, cy, radius - borderW * 0.5, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.22)';
+      ctx.fillStyle = 'rgba(255,255,255,0.30)';
       ctx.fill();
       ctx.restore();
 
-      // Play triangle — smaller and offset right slightly, matching reference
-      const triH = radius * 0.42, triW = triH * 0.85, ox = radius * 0.09;
+      // Play triangle — compact, offset right slightly
+      const triH = radius * 0.36, triW = triH * 0.85, ox = radius * 0.09;
       ctx.save();
       ctx.shadowColor = 'rgba(0,0,0,0.12)';
       ctx.shadowBlur = radius * 0.08;
@@ -676,7 +676,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
     // Call Gemini API and return base64 PNG data URL
     async function callGeminiImageGen(prompt, apiKey) {
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
