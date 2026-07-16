@@ -1185,7 +1185,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       return (
         <div className="fade-in space-y-6">
           <div>
-            <h2 className="text-xl font-bold text-slate-800">Campaign Brief</h2>
+            <h2 className="text-xl font-bold text-slate-800">Offer Brief</h2>
             <p className="text-sm text-slate-500 mt-1">This drives all Gem AI generation — headlines, descriptions, and image prompts.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1982,23 +1982,34 @@ function StockImageFinder({ brief, config, onAddFile, addedUrls = new Set() }) {
             let dataUrl = img.processed, ext = img._ext || 'jpg', gifData = img._gifData;
             if (!dataUrl) {
               const isGif = img.file?.type === 'image/gif';
+              // ── Step 1b: remove watermark from ORIGINAL resolution before resize
+              // (Gemini places the watermark at native size; post-resize position differs)
+              let sourceFile = img.file;
+              if (removeWatermark && !isGif && img.file) {
+                try {
+                  const origUrl = await new Promise(res => {
+                    const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(img.file);
+                  });
+                  const cleanedUrl = await removeGeminiWatermark(origUrl);
+                  const blob = await (await fetch(cleanedUrl)).blob();
+                  sourceFile = new File([blob], img.file.name, { type: img.file.type || 'image/png' });
+                } catch(_) { sourceFile = img.file; }
+              }
               if (img.manualCrop) {
                 if (isGif) {
                   if (!gifData) { gifData = await getAnimatedGIFData(img.file); }
                   dataUrl = await processAnimatedGIF(gifData, 1600, 900, false, img.manualCrop);
                   ext = 'gif';
                 } else {
-                  dataUrl = await applyManualCropToFile(img.file, img.manualCrop);
+                  dataUrl = await applyManualCropToFile(sourceFile, img.manualCrop);
                   ext = 'jpg';
                 }
               } else {
-                const result = await processImage(img.file);
+                const result = await processImage(sourceFile);
                 dataUrl = result.dataUrl; ext = result.ext; gifData = result.gifData;
               }
-            }
-
-            // ── Step 1b: remove Gemini watermark if toggled
-            if (removeWatermark && ext !== 'gif') {
+            } else if (removeWatermark && ext !== 'gif' && img.processed) {
+              // Already-processed images: watermark removal post-resize (best effort)
               dataUrl = await removeGeminiWatermark(dataUrl);
             }
 
@@ -2759,7 +2770,7 @@ function StockImageFinder({ brief, config, onAddFile, addedUrls = new Set() }) {
               <span className="font-semibold">Complete required steps to export</span>
               <div className="flex flex-col gap-0.5 text-xs text-amber-700">
                 {!briefComplete && (
-                  <span>• <button onClick={onGoToBrief} className="underline underline-offset-2 hover:text-amber-900">Step 1: Campaign Brief</button> — offer name required</span>
+                  <span>• <button onClick={onGoToBrief} className="underline underline-offset-2 hover:text-amber-900">Step 1: Offer Brief</button> — offer name required</span>
                 )}
                 {!headlinesComplete && (
                   <span>• <button onClick={onGoToHeadlines} className="underline underline-offset-2 hover:text-amber-900">Step 2: Headlines</button> — add or select at least one headline</span>
