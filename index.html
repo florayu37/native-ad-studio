@@ -310,9 +310,9 @@
 
 Campaign details:
 - Offer: ${brief.offerName}
-- Target audience: ${brief.audience}
-- Angle/message: ${brief.angle}
-${brief.landingPage ? `\n- Landing page: ${brief.landingPage}` : ''}
+${brief.audience ? `- Target audience: ${brief.audience}\n` : ''}\
+${brief.angle ? `- Angle/key message: ${brief.angle}\n` : ''}\
+${brief.landingPage ? `- Landing page: ${brief.landingPage}\n` : ''}
 
 Generate exactly 20 TRAFFIC UNIT HEADLINES following these rules:
 - Under 100 characters each
@@ -330,9 +330,9 @@ Return ONLY the 20 headlines, one per line, no numbering, bullets, or extra text
 
 Campaign details:
 - Offer: ${brief.offerName}
-- Target audience: ${brief.audience}
-- Angle/message: ${brief.angle}
-${brief.landingPage ? `\n- Landing page: ${brief.landingPage}` : ''}
+${brief.audience ? `- Target audience: ${brief.audience}\n` : ''}\
+${brief.angle ? `- Angle/key message: ${brief.angle}\n` : ''}\
+${brief.landingPage ? `- Landing page: ${brief.landingPage}\n` : ''}
 
 Generate exactly 15 POLL STYLE HEADLINES following these rules:
 - Under 100 characters each (including the answer choices)
@@ -349,8 +349,9 @@ Return ONLY the 15 poll headlines, one per line, no numbering or bullets.`;
 
 Campaign details:
 - Offer: ${brief.offerName}
-- Target audience: ${brief.audience}
-- Angle/message: ${brief.angle}${brief.landingPage ? `\n- Landing page: ${brief.landingPage}` : ''}
+${brief.audience ? `- Target audience: ${brief.audience}\n` : ''}\
+${brief.angle ? `- Angle/key message: ${brief.angle}\n` : ''}\
+${brief.landingPage ? `- Landing page: ${brief.landingPage}\n` : ''}
 
 Write exactly 1 UNIVERSAL DESCRIPTION TEXT:
 - Maximum 120 characters
