@@ -1013,6 +1013,9 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
               <div className="border-t border-slate-100 pt-4">
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Stock Image Search (optional)</p>
                 <div className="space-y-3">
+                  <Input label="Pixabay API Key" value={local.pixabayApiKey || ''} onChange={v => set('pixabayApiKey', v)}
+                    placeholder="your-pixabay-api-key" type="password"
+                    hint="pixabay.com/api — free, enables Pixabay stock image search" />
                   <Input label="Pexels API Key" value={local.pexelsApiKey || ''} onChange={v => set('pexelsApiKey', v)}
                     placeholder="your-pexels-api-key" type="password"
                     hint="pexels.com/api — free, enables Pexels stock image search" />
@@ -1671,6 +1674,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
 
     const STOCK_SOURCES = [
       { id: 'wikimedia', label: 'Wikimedia Commons', color: '#3b82f6' },
+      { id: 'pixabay',   label: 'Pixabay',           color: '#2563eb' },
       { id: 'pexels',    label: 'Pexels',            color: '#059669' },
       { id: 'flickr',    label: 'White House Flickr', color: '#dc2626' },
     ];
@@ -1694,6 +1698,21 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
           title: p.title.replace('File:', '').replace(/\.\w+$/, ''),
           source: 'wikimedia',
         }));
+    }
+
+    async function searchPixabay(q, apiKey) {
+      if (!apiKey) throw new Error('Add a Pixabay API key in Settings to search Pixabay.');
+      const res = await fetch(
+        `https://pixabay.com/api/?key=${apiKey}&q=${encodeURIComponent(q)}&image_type=photo&orientation=horizontal&per_page=12&safesearch=true`
+      );
+      if (!res.ok) throw new Error(`Pixabay error ${res.status}`);
+      const data = await res.json();
+      return (data.hits || []).map(p => ({
+        url: p.largeImageURL || p.webformatURL,
+        thumb: p.webformatURL,
+        title: p.tags || `Pixabay photo by ${p.user}`,
+        source: 'pixabay',
+      }));
     }
 
     async function searchPexels(q, apiKey) {
@@ -1751,6 +1770,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
         const errs = [];
         const all = await Promise.all([
           sources.has('wikimedia') ? searchWikimedia(query).catch(e => { errs.push('Wikimedia: ' + e.message); return []; }) : [],
+          sources.has('pixabay')   ? searchPixabay(query, config.pixabayApiKey).catch(e => { errs.push(e.message); return []; }) : [],
           sources.has('pexels')    ? searchPexels(query, config.pexelsApiKey).catch(e => { errs.push(e.message); return []; }) : [],
           sources.has('flickr')    ? searchFlickrWH(query, config.flickrApiKey).catch(e => { errs.push(e.message); return []; }) : [],
         ]);
@@ -1780,6 +1800,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
 
       const sourceBadgeStyle = (src) => ({
         wikimedia: { background: '#dbeafe', color: '#1d4ed8', fontSize: 10, padding: '1px 5px', borderRadius: 4, fontWeight: 600 },
+        pixabay:   { background: '#ede9fe', color: '#5b21b6', fontSize: 10, padding: '1px 5px', borderRadius: 4, fontWeight: 600 },
         pexels:    { background: '#d1fae5', color: '#065f46', fontSize: 10, padding: '1px 5px', borderRadius: 4, fontWeight: 600 },
         flickr:    { background: '#fee2e2', color: '#991b1b', fontSize: 10, padding: '1px 5px', borderRadius: 4, fontWeight: 600 },
       }[src]);
@@ -1850,7 +1871,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
                     {/* source badge */}
                     <div className="absolute top-1 left-1">
                       <span style={sourceBadgeStyle(item.source)}>
-                        {item.source === 'wikimedia' ? 'WK' : item.source === 'pexels' ? 'PX' : 'FL'}
+                        {item.source === 'wikimedia' ? 'WK' : item.source === 'pixabay' ? 'PB' : item.source === 'pexels' ? 'PX' : 'FL'}
                       </span>
                     </div>
                   </div>
@@ -2698,7 +2719,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
 
     // ─── ROOT APP ────────────────────────────────────────────────────────────
 
-    const DEFAULT_CONFIG = { anthropicKey: '', serpApiKey: '', googleClientId: '', geminiApiKey: '', pexelsApiKey: '', flickrApiKey: '' };
+    const DEFAULT_CONFIG = { anthropicKey: '', serpApiKey: '', googleClientId: '', geminiApiKey: '', pexelsApiKey: '', pixabayApiKey: '', flickrApiKey: '' };
 
     function App() {
       const [step, setStep] = useState(1);
