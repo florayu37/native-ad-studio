@@ -627,7 +627,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
     function drawPlayButton(ctx, w, h) {
       const cx = w / 2, cy = h / 2;
       const radius = h / 4;            // 225px → 450px diameter on 900px image
-      const borderW = radius * 0.065;  // thin clean ring (like reference)
+      const borderW = radius * 0.052;  // thin clean ring
 
       // Drop shadow behind the ring
       ctx.save();
@@ -658,8 +658,8 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       //   bottom-left vertex: (cx - R/2,  cy + R*√3/2)
       // This gives width/height = 1.5R / (R*√3) = √3/2 ≈ 0.866 — true equilateral.
       // ox: small rightward shift so triangle looks optically centered in the circle.
-      const triR = radius * 0.40;
-      const ox   = triR * 0.10;
+      const triR = radius / Math.sqrt(3); // side = radius = half of diameter
+      const ox   = -triR * 0.08;         // slight leftward optical correction
       const sq3h = triR * Math.sqrt(3) / 2;
       ctx.save();
       ctx.shadowColor = 'rgba(0,0,0,0.18)';
