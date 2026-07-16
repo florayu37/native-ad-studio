@@ -623,49 +623,100 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
     }
 
     // Draw the white glass play button onto an existing canvas context
+    // Target: ~300px diameter on a 900px-tall image (radius = h/6)
     function drawPlayButton(ctx, w, h) {
       const cx = w / 2, cy = h / 2;
-      const radius = Math.min(w, h) * 0.13;
-      const borderW = radius * 0.09;
+      const radius = h / 6;          // 150px radius → 300px diameter on 900px image
+      const borderW = radius * 0.11; // thicker ring, matching reference PNG
 
+      // Soft outer drop shadow
       ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,0.55)';
-      ctx.shadowBlur = radius * 0.55;
+      ctx.shadowColor = 'rgba(0,0,0,0.45)';
+      ctx.shadowBlur = radius * 0.6;
       ctx.beginPath();
       ctx.arc(cx, cy, radius + borderW * 0.5, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(255,255,255,0)';
       ctx.fill();
       ctx.restore();
 
+      // White ring
       ctx.save();
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.97)';
       ctx.lineWidth = borderW;
       ctx.stroke();
       ctx.restore();
 
+      // Semi-transparent white fill
       ctx.save();
       ctx.beginPath();
       ctx.arc(cx, cy, radius - borderW * 0.5, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillStyle = 'rgba(255,255,255,0.22)';
       ctx.fill();
       ctx.restore();
 
-      const triH = radius * 0.48, triW = triH * 0.88, ox = radius * 0.07;
+      // Play triangle — smaller and offset right slightly, matching reference
+      const triH = radius * 0.42, triW = triH * 0.85, ox = radius * 0.09;
       ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,0.18)';
-      ctx.shadowBlur = radius * 0.12;
-      ctx.shadowOffsetX = radius * 0.03;
-      ctx.shadowOffsetY = radius * 0.03;
+      ctx.shadowColor = 'rgba(0,0,0,0.12)';
+      ctx.shadowBlur = radius * 0.08;
       ctx.beginPath();
       ctx.moveTo(cx + triW * 0.7 + ox, cy);
       ctx.lineTo(cx - triW * 0.3 + ox, cy - triH);
       ctx.lineTo(cx - triW * 0.3 + ox, cy + triH);
       ctx.closePath();
-      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.fillStyle = 'rgba(255,255,255,0.95)';
       ctx.fill();
       ctx.restore();
+    }
+
+    // ─── GEMINI IMAGE GENERATION ─────────────────────────────────────────────
+
+    // Call Gemini API and return base64 PNG data URL
+    async function callGeminiImageGen(prompt, apiKey) {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: `Create a high-quality native advertising image for: ${prompt}. Photorealistic, professional, no text overlays.` }] }],
+            generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
+          }),
+        }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error?.message || `Gemini API error ${res.status}`);
+      }
+      const data = await res.json();
+      const imgPart = data?.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+      if (!imgPart) throw new Error('No image in Gemini response');
+      const { mimeType, data: b64 } = imgPart.inlineData;
+      return `data:${mimeType};base64,${b64}`;
+    }
+
+    // Remove the Nano Banana / Gemini watermark (white star, bottom-right corner)
+    // Uses neighbor-clone for the watermark region — best with direct-saved PNG from Gemini
+    function removeGeminiWatermark(dataUrl) {
+      return new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width; canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          const wmSize = Math.min(img.width, img.height) >= 512 ? 96 : 48;
+          const x0 = img.width - wmSize, y0 = img.height - wmSize;
+          // Clone from just above the watermark region
+          const sampleY = Math.max(0, y0 - wmSize);
+          const patch = ctx.getImageData(x0, sampleY, wmSize, wmSize);
+          ctx.putImageData(patch, x0, y0);
+          resolve(canvas.toDataURL('image/png'));
+        };
+        img.src = dataUrl;
+      });
     }
 
     function addPlayButtonOverlay(dataUrl) {
@@ -949,7 +1000,9 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
             </div>
             <div className="px-6 py-5 space-y-4">
               <Input label="Anthropic API Key" value={local.anthropicKey} onChange={v => set('anthropicKey', v)}
-                placeholder="sk-ant-api03-..." type="password" hint="Optional — required for AI headline, image prompt, and angle generation" />
+                placeholder="sk-ant-api03-..." type="password" hint="Required for AI headline, image prompt, and angle generation" />
+              <Input label="Gemini API Key" value={local.geminiApiKey || ''} onChange={v => set('geminiApiKey', v)}
+                placeholder="AIzaSy..." type="password" hint="Google AI Studio (aistudio.google.com) — required for Gemini image generation" />
               <div className="border-t border-slate-100 pt-4">
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Google Search Trends (optional)</p>
                 <Input label="SerpAPI Key" value={local.serpApiKey} onChange={v => set('serpApiKey', v)}
@@ -1263,12 +1316,12 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
         finally { setLoadingAll(false); }
       };
 
-      const toggleSelect = (key, text) => {
+      const toggleSelect = (key, text, source) => {
         setState(p => ({
           ...p,
           selected: p.selected.some(s => s.key === key)
             ? p.selected.filter(s => s.key !== key)
-            : [...p.selected, { key, text }],
+            : [...p.selected, { key, text, source }],
         }));
       };
 
@@ -1361,7 +1414,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
                 <div className="flex gap-2 pb-1">
                   <Btn size="sm" variant="ghost" onClick={() => {
                     const toAdd = displayItems.filter(i => !state.selected.some(s => s.key === i.key));
-                    setState(p => ({ ...p, selected: [...p.selected, ...toAdd.map(i => ({ key: i.key, text: i.text }))] }));
+                    setState(p => ({ ...p, selected: [...p.selected, ...toAdd.map(i => ({ key: i.key, text: i.text, source: i.source }))] }));
                   }}>All</Btn>
                   <Btn size="sm" variant="ghost" onClick={() => {
                     const keysToRemove = new Set(displayItems.map(i => i.key));
@@ -1384,7 +1437,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
                         className={`flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-all cursor-pointer ${
                           isSelected ? 'border-indigo-200 bg-indigo-50' : 'border-slate-200 bg-white hover:border-slate-300'
                         }`}
-                        onClick={() => !isEditing && toggleSelect(item.key, item.text)}>
+                        onClick={() => !isEditing && toggleSelect(item.key, item.text, item.source)}>
                         <div className={`w-5 h-5 rounded flex-shrink-0 mt-0.5 border-2 flex items-center justify-center text-xs font-bold transition-colors ${
                           isSelected ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-300'
                         }`}>
@@ -1542,6 +1595,46 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
               </div>
             </div>
           </div>
+        </div>
+      );
+    }
+
+    // ─── GEMINI PROMPT CARD ───────────────────────────────────────────────────
+    // Each image prompt card with a copy button + Gemini generate button
+
+    function GeminiPromptCard({ prompt, apiKey, onImageGenerated }) {
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+      const [done, setDone] = useState(false);
+
+      const generate = async () => {
+        if (!apiKey) { setError('Add Gemini API key in Settings'); return; }
+        setLoading(true); setError(''); setDone(false);
+        try {
+          const raw = await callGeminiImageGen(prompt, apiKey);
+          const clean = await removeGeminiWatermark(raw);
+          onImageGenerated(clean);
+          setDone(true);
+        } catch (e) { setError(e.message); }
+        finally { setLoading(false); }
+      };
+
+      return (
+        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 leading-relaxed fade-in">
+          <div className="flex items-start gap-2">
+            <span className="flex-1">{prompt}</span>
+            <div className="flex flex-col gap-1 flex-shrink-0">
+              <button onClick={() => navigator.clipboard?.writeText(prompt)}
+                className="text-slate-300 hover:text-indigo-500 text-base" title="Copy prompt">⎘</button>
+              <button onClick={generate} disabled={loading}
+                className={`text-base transition-colors ${done ? 'text-emerald-500' : loading ? 'text-slate-300' : 'text-slate-300 hover:text-violet-500'}`}
+                title={apiKey ? 'Generate with Gemini' : 'Add Gemini API key in Settings'}>
+                {loading ? <span className="spin" style={{ display: 'inline-block', color: 'var(--accent)' }}>↻</span> : done ? '✓' : '✦'}
+              </button>
+            </div>
+          </div>
+          {error && <p className="text-red-500 mt-1">{error}</p>}
+          {done && <p className="text-emerald-600 mt-1">↓ Image added to upload list — scroll up to process it</p>}
         </div>
       );
     }
@@ -1834,7 +1927,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
               <div className="flex items-center justify-between">
                 <div>
                   <span className="text-sm font-semibold text-slate-700">Gem Image Prompts</span>
-                  <p className="text-xs text-slate-400 mt-0.5">5 AI-ready prompts for Midjourney / DALL-E</p>
+                  <p className="text-xs text-slate-400 mt-0.5">5 AI-ready prompts for Midjourney / Gemini</p>
                 </div>
                 <Btn onClick={generatePrompts} disabled={loadingPrompts} size="sm">
                   {loadingPrompts ? <><Spinner /> Generating...</> : '✦ Generate (5)'}
@@ -1849,14 +1942,14 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
               ) : (
                 <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
                   {imagePrompts.map((p, i) => (
-                    <div key={i} className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600 leading-relaxed fade-in">
-                      <div className="flex items-start justify-between gap-2">
-                        <span>{p}</span>
-                        <button
-                          onClick={() => navigator.clipboard?.writeText(p)}
-                          className="text-slate-300 hover:text-indigo-500 flex-shrink-0 text-base" title="Copy prompt">⎘</button>
-                      </div>
-                    </div>
+                    <GeminiPromptCard key={i} prompt={p} apiKey={config.geminiApiKey} onImageGenerated={dataUrl => {
+                      // Convert data URL to File and add to images list
+                      fetch(dataUrl).then(r => r.blob()).then(blob => {
+                        const file = new File([blob], `gemini_${Date.now()}_${i+1}.png`, { type: 'image/png' });
+                        const entry = { id: uid(), file, name: file.name, preview: URL.createObjectURL(blob), processed: null, processedName: null };
+                        setState(p => ({ ...p, images: [...p.images, entry] }));
+                      });
+                    }} />
                   ))}
                 </div>
               )}
@@ -1950,10 +2043,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
         headlineSections.push(`Poll Style Headlines:\n${d.pollSelected.map(s => fmt(s.text)).join('\n')}`);
       lines.push(`Headlines:\n*Bold = launch package.\n\n` + (headlineSections.join('\n\n') || '—'));
 
-      const imgLines = d.imgEntries.length > 0
-        ? d.imgEntries.map(e => `Image ${e.n} - ${e.name}`).join('\n')
-        : '—';
-      lines.push(`Images:\n${d.imgFolder}\n\n${imgLines}\n\n*Do the images need cropping? N\nResize tool: https://www.birme.net/ (1600*900, .jpeg)`);
+      lines.push(`Images:\n${d.imgFolder}`);
 
       // Cover image title table (only if at least one title has been generated)
       if (d.imgEntries.some(e => e.title)) {
@@ -1986,16 +2076,12 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       if (d.pollSelected.length > 0)
         headlineParts.push(`<strong>Poll Style Headlines:</strong><br>${d.pollSelected.map(s => fmtH(s.text)).join('<br>')}`);
 
-      const imgLines = d.imgEntries.length > 0
-        ? d.imgEntries.map(e => `Image ${e.n} - ${escHtml(e.name)}`).join('<br>')
-        : '—';
-
       const parts = [
         sec('Offer(s):', escHtml(d.offer)),
         sec('RA(s):', escHtml(d.ra)),
         sec('Locker Link(s):', escHtml(d.lockerLink)),
         `<p><strong>Headlines:</strong><br><em>*Bold = launch package.</em><br><br>${headlineParts.join('<br><br>') || '—'}</p>`,
-        sec('Images:', `${escHtml(d.imgFolder)}<br><br>${imgLines}<br><br><em>*Do the images need cropping? N</em><br>Resize tool: https://www.birme.net/ (1600*900, .jpeg)`),
+        sec('Images:', escHtml(d.imgFolder)),
         ...(d.imgEntries.some(e => e.title) ? [`<p><strong>Cover Image Titles:</strong><br><em>*Bold = launch package.</em><br>
 <table style="border-collapse:collapse;width:100%;font-size:13px;margin-top:6px">
 <thead><tr>
@@ -2387,7 +2473,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
 
     // ─── ROOT APP ────────────────────────────────────────────────────────────
 
-    const DEFAULT_CONFIG = { anthropicKey: '', serpApiKey: '', googleClientId: '' };
+    const DEFAULT_CONFIG = { anthropicKey: '', serpApiKey: '', googleClientId: '', geminiApiKey: '' };
 
     function App() {
       const [step, setStep] = useState(1);
