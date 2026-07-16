@@ -733,34 +733,35 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
           ctx.drawImage(img, 0, 0);
           const IW = img.naturalWidth  || img.width;
           const IH = img.naturalHeight || img.height;
-          // Gemini uses exactly 48×48 px watermark on small images, 96×96 on large.
-          // Using a % was wrong — it over-filled and created visible artifacts.
+          // Newer Gemini models (3.5+) shifted the watermark ~192px inward from the corner.
+          // Watermark is 96×96 px (large images) or 48×48 px (small images).
           const wmSize = Math.min(IW, IH) >= 512 ? 96 : 48;
-          const x0 = IW - wmSize;
-          const y0 = IH - wmSize;
+          const inset  = wmSize * 2; // 192 for 96px, 96 for 48px
+          const x0 = IW - inset;
+          const y0 = IH - inset;
 
           const imgData = ctx.getImageData(0, 0, IW, IH);
           const d = imgData.data;
           const get = (x, y) => { const k = (y * IW + x) * 4; return [d[k], d[k+1], d[k+2], d[k+3]]; };
           const set = (x, y, r, g, b, a) => { const k = (y * IW + x) * 4; d[k]=r; d[k+1]=g; d[k+2]=b; d[k+3]=a; };
 
-          // Gradient inpaint: interpolate from the clean row just above and
-          // column just left of the watermark region.
-          // Weights: near top → mostly from above; near left → mostly from left.
+          // 4-edge bilinear inpaint: since the watermark is inset (not at the corner),
+          // we have clean pixels on all 4 sides. Blend between all four neighbours.
           for (let i = 0; i < wmSize; i++) {
             for (let j = 0; j < wmSize; j++) {
               const px = x0 + i, py = y0 + j;
-              const fa = get(px, y0 - 1);  // clean pixel above, same column
-              const fl = get(x0 - 1, py);  // clean pixel left,  same row
-              const wA = (wmSize - j) / wmSize;
-              const wL = (wmSize - i) / wmSize;
-              const tot = wA + wL || 1;
-              set(px, py,
-                Math.round((fa[0]*wA + fl[0]*wL) / tot),
-                Math.round((fa[1]*wA + fl[1]*wL) / tot),
-                Math.round((fa[2]*wA + fl[2]*wL) / tot),
-                255
-              );
+              const ft = get(px, y0 - 1);         // top
+              const fb = get(px, y0 + wmSize);     // bottom
+              const fl = get(x0 - 1, py);          // left
+              const fr = get(x0 + wmSize, py);     // right
+              const tH = wmSize > 1 ? i / (wmSize - 1) : 0.5; // 0→left, 1→right
+              const tV = wmSize > 1 ? j / (wmSize - 1) : 0.5; // 0→top,  1→bottom
+              for (let c = 0; c < 3; c++) {
+                const hBlend = fl[c] * (1 - tH) + fr[c] * tH;
+                const vBlend = ft[c] * (1 - tV) + fb[c] * tV;
+                d[(py * IW + px) * 4 + c] = Math.round((hBlend + vBlend) / 2);
+              }
+              d[(py * IW + px) * 4 + 3] = 255;
             }
           }
           ctx.putImageData(imgData, 0, 0);
