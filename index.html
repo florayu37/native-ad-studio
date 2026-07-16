@@ -1793,7 +1793,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       }));
     }
 
-function StockImageFinder({ brief, config, onAddFile, addedUrls = new Set() }) {
+function StockImageFinder({ brief, config, onAddFile, onRemoveUrl, addedUrls = new Set() }) {
       const [sources, setSources] = useState(['wikimedia']);
       const [query, setQuery] = useState(brief?.offerName || '');
       const [perSource, setPerSource] = useState(16);
@@ -1821,7 +1821,8 @@ function StockImageFinder({ brief, config, onAddFile, addedUrls = new Set() }) {
       };
 
       const addImage = async (item) => {
-        if (addedUrls.has(item.url) || adding.has(item.url)) return;
+        if (addedUrls.has(item.url)) { onRemoveUrl?.(item.url); return; }
+        if (adding.has(item.url)) return;
         setAdding(prev => new Set([...prev, item.url]));
         try {
           const res = await fetch(item.url);
@@ -1907,8 +1908,9 @@ function StockImageFinder({ brief, config, onAddFile, addedUrls = new Set() }) {
                       onError={e => { e.target.style.display='none'; }} />
                     {/* overlay */}
                     {isAdded ? (
-                      <div className="absolute inset-0 bg-emerald-500/75 flex items-center justify-center">
-                        <span className="text-white text-xl font-bold">✓</span>
+                      <div className="absolute inset-0 bg-emerald-500/75 group-hover:bg-red-500/75 flex items-center justify-center transition-colors">
+                        <span className="text-white text-xl font-bold group-hover:hidden">✓</span>
+                        <span className="text-white text-xl font-bold hidden group-hover:block">×</span>
                       </div>
                     ) : isAdding ? (
                       <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
@@ -2363,8 +2365,11 @@ function StockImageFinder({ brief, config, onAddFile, addedUrls = new Set() }) {
             config={config}
             addedUrls={new Set(images.filter(i => i.sourceUrl).map(i => i.sourceUrl))}
             onAddFile={(file, sourceUrl) => {
-              const entry = { id: uid(), file, name: file.name, preview: URL.createObjectURL(file), sourceUrl: sourceUrl || null, processed: null, processedName: null };
+              const entry = { id: uid(), file, name: file.name, preview: URL.createObjectURL(file), sourceUrl: sourceUrl || null, processed: null, processedName: null, extraCrops: {}, extras: [] };
               setState(p => ({ ...p, images: [...p.images, entry] }));
+            }}
+            onRemoveUrl={(sourceUrl) => {
+              setState(p => ({ ...p, images: p.images.filter(i => i.sourceUrl !== sourceUrl) }));
             }}
           />
 
