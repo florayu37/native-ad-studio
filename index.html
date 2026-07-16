@@ -733,29 +733,25 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
           ctx.drawImage(img, 0, 0);
           const IW = img.naturalWidth  || img.width;
           const IH = img.naturalHeight || img.height;
-          // Watermark region: bottom-right corner, 15% of shorter dimension
-          const wmSize = Math.round(Math.min(IW, IH) * 0.15);
+          // Gemini uses exactly 48×48 px watermark on small images, 96×96 on large.
+          // Using a % was wrong — it over-filled and created visible artifacts.
+          const wmSize = Math.min(IW, IH) >= 512 ? 96 : 48;
           const x0 = IW - wmSize;
           const y0 = IH - wmSize;
-          // Sample 10px OUTSIDE the fill zone to avoid any watermark halo
-          const topRow  = Math.max(0, y0 - 10);
-          const leftCol = Math.max(0, x0 - 10);
 
           const imgData = ctx.getImageData(0, 0, IW, IH);
           const d = imgData.data;
           const get = (x, y) => { const k = (y * IW + x) * 4; return [d[k], d[k+1], d[k+2], d[k+3]]; };
           const set = (x, y, r, g, b, a) => { const k = (y * IW + x) * 4; d[k]=r; d[k+1]=g; d[k+2]=b; d[k+3]=a; };
 
-          // DEBUG: mark top-left corner teal so we can confirm the fn is running
-          set(0, 0, 0, 200, 200, 255);
-          set(1, 0, 0, 200, 200, 255);
-          set(0, 1, 0, 200, 200, 255);
-
+          // Gradient inpaint: interpolate from the clean row just above and
+          // column just left of the watermark region.
+          // Weights: near top → mostly from above; near left → mostly from left.
           for (let i = 0; i < wmSize; i++) {
             for (let j = 0; j < wmSize; j++) {
               const px = x0 + i, py = y0 + j;
-              const fa = get(px, topRow);   // clean row above fill zone
-              const fl = get(leftCol, py);  // clean column left of fill zone
+              const fa = get(px, y0 - 1);  // clean pixel above, same column
+              const fl = get(x0 - 1, py);  // clean pixel left,  same row
               const wA = (wmSize - j) / wmSize;
               const wL = (wmSize - i) / wmSize;
               const tot = wA + wL || 1;
@@ -763,7 +759,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
                 Math.round((fa[0]*wA + fl[0]*wL) / tot),
                 Math.round((fa[1]*wA + fl[1]*wL) / tot),
                 Math.round((fa[2]*wA + fl[2]*wL) / tot),
-                Math.round((fa[3]*wA + fl[3]*wL) / tot)
+                255
               );
             }
           }
