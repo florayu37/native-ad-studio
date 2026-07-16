@@ -1011,6 +1011,17 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
               <Input label="Gemini API Key" value={local.geminiApiKey || ''} onChange={v => set('geminiApiKey', v)}
                 placeholder="AIzaSy..." type="password" hint="Google AI Studio (aistudio.google.com) — required for Gemini image generation" />
               <div className="border-t border-slate-100 pt-4">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Stock Image Search (optional)</p>
+                <div className="space-y-3">
+                  <Input label="Pexels API Key" value={local.pexelsApiKey || ''} onChange={v => set('pexelsApiKey', v)}
+                    placeholder="your-pexels-api-key" type="password"
+                    hint="pexels.com/api — free, enables Pexels stock image search" />
+                  <Input label="Flickr API Key" value={local.flickrApiKey || ''} onChange={v => set('flickrApiKey', v)}
+                    placeholder="your-flickr-api-key" type="password"
+                    hint="flickr.com/services/apps — free, enables White House Flickr search" />
+                </div>
+              </div>
+              <div className="border-t border-slate-100 pt-4">
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Google Search Trends (optional)</p>
                 <Input label="SerpAPI Key" value={local.serpApiKey} onChange={v => set('serpApiKey', v)}
                   placeholder="your-serpapi-key" type="password"
@@ -1656,6 +1667,204 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       );
     }
 
+    // ─── STOCK IMAGE FINDER ───────────────────────────────────────────────────
+
+    const STOCK_SOURCES = [
+      { id: 'wikimedia', label: 'Wikimedia Commons', color: '#3b82f6' },
+      { id: 'pexels',    label: 'Pexels',            color: '#059669' },
+      { id: 'flickr',    label: 'White House Flickr', color: '#dc2626' },
+    ];
+
+    async function searchWikimedia(q) {
+      const srRes = await fetch(
+        `https://commons.wikimedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}+filetype:bitmap&srnamespace=6&srlimit=15&format=json&origin=*`
+      );
+      const srData = await srRes.json();
+      const titles = (srData.query?.search || []).map(r => r.title).join('|');
+      if (!titles) return [];
+      const infoRes = await fetch(
+        `https://commons.wikimedia.org/w/api.php?action=query&prop=imageinfo&iiprop=url|thumburl|mediatype&titles=${encodeURIComponent(titles)}&iiurlwidth=320&format=json&origin=*`
+      );
+      const infoData = await infoRes.json();
+      return Object.values(infoData.query?.pages || {})
+        .filter(p => p.imageinfo?.[0]?.thumburl && p.imageinfo[0].mediatype !== 'AUDIO')
+        .map(p => ({
+          url: p.imageinfo[0].url,
+          thumb: p.imageinfo[0].thumburl,
+          title: p.title.replace('File:', '').replace(/\.\w+$/, ''),
+          source: 'wikimedia',
+        }));
+    }
+
+    async function searchPexels(q, apiKey) {
+      if (!apiKey) throw new Error('Add a Pexels API key in Settings to search Pexels.');
+      const res = await fetch(
+        `https://api.pexels.com/v1/search?query=${encodeURIComponent(q)}&per_page=12&orientation=landscape`,
+        { headers: { Authorization: apiKey } }
+      );
+      if (!res.ok) throw new Error(`Pexels error ${res.status}`);
+      const data = await res.json();
+      return (data.photos || []).map(p => ({
+        url: p.src.large2x || p.src.large || p.src.original,
+        thumb: p.src.medium,
+        title: p.alt || `Pexels photo by ${p.photographer}`,
+        source: 'pexels',
+      }));
+    }
+
+    async function searchFlickrWH(q, apiKey) {
+      if (!apiKey) throw new Error('Add a Flickr API key in Settings to search White House Flickr.');
+      const res = await fetch(
+        `https://api.flickr.com/services/rest/?method=flickr.photos.search&user_id=35591378%40N03&text=${encodeURIComponent(q)}&format=json&nojsoncallback=1&api_key=${apiKey}&per_page=12&extras=url_m%2Curl_l%2Ctitle&sort=relevance`
+      );
+      if (!res.ok) throw new Error(`Flickr error ${res.status}`);
+      const data = await res.json();
+      if (data.stat === 'fail') throw new Error(data.message || 'Flickr API error');
+      return (data.photos?.photo || [])
+        .filter(p => p.url_m)
+        .map(p => ({
+          url: p.url_l || p.url_m,
+          thumb: p.url_m,
+          title: p.title || 'White House photo',
+          source: 'flickr',
+        }));
+    }
+
+    function StockImageFinder({ brief, config, onAddFile }) {
+      const [sources, setSources] = useState(new Set(['wikimedia']));
+      const [query, setQuery] = useState(brief?.offerName || '');
+      const [loading, setLoading] = useState(false);
+      const [results, setResults] = useState([]);
+      const [errors, setErrors] = useState([]);
+      const [added, setAdded] = useState(new Set());
+      const [adding, setAdding] = useState(new Set());
+
+      const toggleSource = (id) => setSources(prev => {
+        const next = new Set(prev);
+        next.has(id) ? next.delete(id) : next.add(id);
+        return next;
+      });
+
+      const doSearch = async () => {
+        if (!query.trim() || sources.size === 0) return;
+        setLoading(true); setResults([]); setErrors([]); setAdded(new Set());
+        const errs = [];
+        const all = await Promise.all([
+          sources.has('wikimedia') ? searchWikimedia(query).catch(e => { errs.push('Wikimedia: ' + e.message); return []; }) : [],
+          sources.has('pexels')    ? searchPexels(query, config.pexelsApiKey).catch(e => { errs.push(e.message); return []; }) : [],
+          sources.has('flickr')    ? searchFlickrWH(query, config.flickrApiKey).catch(e => { errs.push(e.message); return []; }) : [],
+        ]);
+        setResults(all.flat());
+        setErrors(errs);
+        setLoading(false);
+      };
+
+      const addImage = async (item) => {
+        if (added.has(item.url) || adding.has(item.url)) return;
+        setAdding(prev => new Set([...prev, item.url]));
+        try {
+          const res = await fetch(item.url);
+          const blob = await res.blob();
+          const rawExt = item.url.split('?')[0].split('.').pop().toLowerCase();
+          const ext = ['jpg','jpeg','png','webp','gif'].includes(rawExt) ? rawExt : 'jpg';
+          const slug = item.title.replace(/[^a-z0-9]/gi, '_').slice(0, 40);
+          const file = new File([blob], `${item.source}_${slug}.${ext}`, { type: blob.type || 'image/jpeg' });
+          onAddFile(file);
+          setAdded(prev => new Set([...prev, item.url]));
+        } catch (e) {
+          setErrors(prev => [...prev, `Could not download "${item.title}": ${e.message}`]);
+        } finally {
+          setAdding(prev => { const n = new Set(prev); n.delete(item.url); return n; });
+        }
+      };
+
+      const sourceBadgeStyle = (src) => ({
+        wikimedia: { background: '#dbeafe', color: '#1d4ed8', fontSize: 10, padding: '1px 5px', borderRadius: 4, fontWeight: 600 },
+        pexels:    { background: '#d1fae5', color: '#065f46', fontSize: 10, padding: '1px 5px', borderRadius: 4, fontWeight: 600 },
+        flickr:    { background: '#fee2e2', color: '#991b1b', fontSize: 10, padding: '1px 5px', borderRadius: 4, fontWeight: 600 },
+      }[src]);
+
+      return (
+        <div className="space-y-3 border border-slate-200 rounded-xl p-4" style={{background:'var(--bg-sub)'}}>
+          <p className="text-sm font-semibold text-slate-700">Find Stock Images</p>
+
+          {/* Source toggles */}
+          <div className="flex flex-wrap gap-2">
+            {STOCK_SOURCES.map(({ id, label, color }) => (
+              <button key={id} onClick={() => toggleSource(id)}
+                className="px-3 py-1 text-xs rounded-full border transition-all font-medium"
+                style={sources.has(id)
+                  ? { background: color + '18', borderColor: color, color }
+                  : { background: 'var(--bg-card)', borderColor: 'var(--border)', color: 'var(--text-3)' }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Search bar */}
+          <div className="flex gap-2">
+            <input value={query} onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && doSearch()}
+              placeholder="Search images…"
+              className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              style={{background:'var(--bg-input)', color:'var(--text)'}} />
+            <Btn onClick={doSearch} disabled={loading || !query.trim() || sources.size === 0} size="sm">
+              {loading ? <Spinner /> : '🔍 Search'}
+            </Btn>
+          </div>
+
+          {errors.length > 0 && (
+            <div className="space-y-1">
+              {errors.map((e, i) => <p key={i} className="text-xs text-red-500">{e}</p>)}
+            </div>
+          )}
+
+          {/* Results grid */}
+          {results.length > 0 && (
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-80 overflow-y-auto">
+              {results.map((item, i) => {
+                const isAdded   = added.has(item.url);
+                const isAdding  = adding.has(item.url);
+                return (
+                  <div key={i}
+                    onClick={() => addImage(item)}
+                    className="relative cursor-pointer rounded-lg overflow-hidden border border-slate-200 hover:border-indigo-400 transition-all group"
+                    title={item.title}>
+                    <img src={item.thumb} alt={item.title}
+                      className="w-full h-20 object-cover bg-slate-100"
+                      onError={e => { e.target.style.display='none'; }} />
+                    {/* overlay */}
+                    {isAdded ? (
+                      <div className="absolute inset-0 bg-emerald-500/75 flex items-center justify-center">
+                        <span className="text-white text-xl font-bold">✓</span>
+                      </div>
+                    ) : isAdding ? (
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                        <Spinner />
+                      </div>
+                    ) : (
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/35 transition-all flex items-center justify-center">
+                        <span className="text-white text-xs font-semibold opacity-0 group-hover:opacity-100">+ Add</span>
+                      </div>
+                    )}
+                    {/* source badge */}
+                    <div className="absolute top-1 left-1">
+                      <span style={sourceBadgeStyle(item.source)}>
+                        {item.source === 'wikimedia' ? 'WK' : item.source === 'pexels' ? 'PX' : 'FL'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {!loading && results.length === 0 && errors.length === 0 && (
+            <p className="text-xs text-slate-400 text-center py-2">Select sources and search to find images</p>
+          )}
+        </div>
+      );
+    }
+
     // ─── STEP 3: IMAGES ──────────────────────────────────────────────────────
 
     function Step3({ brief, state, setState, config, onNext, onBack }) {
@@ -1972,6 +2181,11 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
               )}
             </div>
           </div>
+
+          <StockImageFinder brief={brief} config={config} onAddFile={(file) => {
+            const entry = { id: uid(), file, name: file.name, preview: URL.createObjectURL(file), processed: null, processedName: null };
+            setState(p => ({ ...p, images: [...p.images, entry] }));
+          }} />
 
           <div className="flex justify-between pt-2">
             <Btn onClick={onBack} variant="ghost">← Back</Btn>
@@ -2484,7 +2698,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
 
     // ─── ROOT APP ────────────────────────────────────────────────────────────
 
-    const DEFAULT_CONFIG = { anthropicKey: '', serpApiKey: '', googleClientId: '', geminiApiKey: '' };
+    const DEFAULT_CONFIG = { anthropicKey: '', serpApiKey: '', googleClientId: '', geminiApiKey: '', pexelsApiKey: '', flickrApiKey: '' };
 
     function App() {
       const [step, setStep] = useState(1);
