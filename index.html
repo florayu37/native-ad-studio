@@ -1214,9 +1214,15 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
         if (!config.anthropicKey) { setError('Add your Anthropic API key in Settings first.'); return; }
         setLoadingTraffic(true); setError('');
         try {
-          const raw = await callClaude(GEM_TRAFFIC_PROMPT(brief), config.anthropicKey);
-          const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 5);
-          setState(p => ({ ...p, trafficHeadlines: lines }));
+          const [raw, descRaw] = await Promise.all([
+            callClaude(GEM_TRAFFIC_PROMPT(brief), config.anthropicKey),
+            callClaude(GEM_DESCRIPTION_PROMPT(brief), config.anthropicKey),
+          ]);
+          setState(p => ({
+            ...p,
+            trafficHeadlines: raw.split('\n').map(l => l.trim()).filter(l => l.length > 5),
+            universalDesc: descRaw.trim().slice(0, 200),
+          }));
         } catch (e) { setError(e.message); }
         finally { setLoadingTraffic(false); }
       };
@@ -1225,9 +1231,15 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
         if (!config.anthropicKey) { setError('Add your Anthropic API key in Settings first.'); return; }
         setLoadingPoll(true); setError('');
         try {
-          const raw = await callClaude(GEM_POLL_PROMPT(brief), config.anthropicKey);
-          const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 5);
-          setState(p => ({ ...p, pollHeadlines: lines }));
+          const [raw, descRaw] = await Promise.all([
+            callClaude(GEM_POLL_PROMPT(brief), config.anthropicKey),
+            callClaude(GEM_DESCRIPTION_PROMPT(brief), config.anthropicKey),
+          ]);
+          setState(p => ({
+            ...p,
+            pollHeadlines: raw.split('\n').map(l => l.trim()).filter(l => l.length > 5),
+            universalDesc: descRaw.trim().slice(0, 200),
+          }));
         } catch (e) { setError(e.message); }
         finally { setLoadingPoll(false); }
       };
