@@ -988,8 +988,20 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       const [trendsLoading, setTrendsLoading] = useState(false);
       const [trendsError, setTrendsError] = useState('');
       const [suggestions, setSuggestions] = useState([]);
+      const [selectedAngles, setSelectedAngles] = useState(new Set());
       const [trendsFromCache, setTrendsFromCache] = useState(false);
       const [trendsCachedAt, setTrendsCachedAt] = useState(null);
+
+      const toggleAngle = (s) => {
+        setSelectedAngles(prev => {
+          const next = new Set(prev);
+          next.has(s) ? next.delete(s) : next.add(s);
+          // Join all selected angles into the angle textarea
+          const joined = suggestions.filter(sg => next.has(sg)).join('\n\n');
+          onChange({ ...brief, angle: joined });
+          return next;
+        });
+      };
 
       const valid = brief.offerName.trim();
 
@@ -1093,20 +1105,31 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
 
                 {suggestions.length > 0 && (
                   <div className="space-y-2 fade-in">
-                    <p className="text-xs text-violet-500 font-medium">Click any angle to use it as your Angle / Key Message ↑</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-violet-500 font-medium">Select one or more angles — they'll populate the field above</p>
+                      {selectedAngles.size > 0 && (
+                        <span className="text-xs text-violet-400">{selectedAngles.size} selected</span>
+                      )}
+                    </div>
                     {suggestions.map((s, i) => {
                       const dashIdx = s.indexOf('—');
                       const title = dashIdx > -1 ? s.slice(0, dashIdx).trim() : s;
                       const desc  = dashIdx > -1 ? s.slice(dashIdx + 1).trim() : '';
+                      const isSelected = selectedAngles.has(s);
                       return (
-                        <button key={i} onClick={() => onChange({ ...brief, angle: s })}
-                          className={`w-full text-left p-3 bg-white border rounded-xl transition-all fade-in ${
-                            brief.angle === s
+                        <button key={i} onClick={() => toggleAngle(s)}
+                          className={`w-full text-left p-3 bg-white border rounded-xl transition-all fade-in flex items-start gap-3 ${
+                            isSelected
                               ? 'border-violet-400 ring-1 ring-violet-300 bg-violet-50'
                               : 'border-slate-200 hover:border-violet-300 hover:bg-violet-50/60'
                           }`}>
-                          <span className="text-sm font-semibold text-violet-700 block">{title}</span>
-                          {desc && <span className="text-xs text-slate-500 mt-0.5 block leading-relaxed">{desc}</span>}
+                          <span className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center text-xs font-bold transition-all ${
+                            isSelected ? 'bg-violet-600 border-violet-600 text-white' : 'border-slate-300'
+                          }`}>{isSelected ? '✓' : ''}</span>
+                          <span className="min-w-0">
+                            <span className="text-sm font-semibold text-violet-700 block">{title}</span>
+                            {desc && <span className="text-xs text-slate-500 mt-0.5 block leading-relaxed">{desc}</span>}
+                          </span>
                         </button>
                       );
                     })}
