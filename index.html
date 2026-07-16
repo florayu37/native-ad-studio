@@ -720,51 +720,60 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       return `data:${pred.mimeType || 'image/png'};base64,${pred.bytesBase64Encoded}`;
     }
 
-    // Remove the Gemini web app watermark (small icon, bottom-right corner).
-    // Uses a neighbor-clone approach: samples the region just above the watermark
-    // and paints it over the watermark area.
+    // Remove the Gemini web app watermark (bottom-right corner sparkle icon).
+    // Position formula from GeminiWatermarkTool source (watermark_engine.cpp):
+    //   x0 = image_width - margin_right - logo_size  (top-left of watermark)
+    //   V2 large (both > 1024): logo=96, margin=192  → x0 = W-288
+    //   V2 small (either ≤ 1024): logo=36, margin = round(192 * long/source_long_dim)
+    //     source_long_dim = 2752 if short≥566, 2816 if short≥550, else 2848
     function removeGeminiWatermark(dataUrl) {
       return new Promise(resolve => {
         const img = new Image();
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          canvas.width = img.width; canvas.height = img.height;
+          const IW = img.naturalWidth || img.width;
+          const IH = img.naturalHeight || img.height;
+          canvas.width = IW; canvas.height = IH;
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0);
-          const IW = img.naturalWidth  || img.width;
-          const IH = img.naturalHeight || img.height;
-          // Newer Gemini models (3.5+): watermark CENTER is ~192px from the corner.
-          // Watermark is 96×96 px (large images) or 48×48 px (small images).
-          // Top-left of fill = corner_to_center + half_size = 192 + 48 = 240px from edge.
-          const wmSize = Math.min(IW, IH) >= 512 ? 96 : 48;
-          const centerDist = 192; // px from corner to watermark center
-          const x0 = IW - centerDist - Math.round(wmSize / 2);
-          const y0 = IH - centerDist - Math.round(wmSize / 2);
-
           const imgData = ctx.getImageData(0, 0, IW, IH);
           const d = imgData.data;
-          const get = (x, y) => { const k = (y * IW + x) * 4; return [d[k], d[k+1], d[k+2], d[k+3]]; };
-          const set = (x, y, r, g, b, a) => { const k = (y * IW + x) * 4; d[k]=r; d[k+1]=g; d[k+2]=b; d[k+3]=a; };
 
-          // 4-edge bilinear inpaint: since the watermark is inset (not at the corner),
-          // we have clean pixels on all 4 sides. Blend between all four neighbours.
-          for (let i = 0; i < wmSize; i++) {
-            for (let j = 0; j < wmSize; j++) {
-              const px = x0 + i, py = y0 + j;
-              const ft = get(px, y0 - 1);         // top
-              const fb = get(px, y0 + wmSize);     // bottom
-              const fl = get(x0 - 1, py);          // left
-              const fr = get(x0 + wmSize, py);     // right
-              const tH = wmSize > 1 ? i / (wmSize - 1) : 0.5; // 0→left, 1→right
-              const tV = wmSize > 1 ? j / (wmSize - 1) : 0.5; // 0→top,  1→bottom
-              for (let c = 0; c < 3; c++) {
-                const hBlend = fl[c] * (1 - tH) + fr[c] * tH;
-                const vBlend = ft[c] * (1 - tV) + fb[c] * tV;
-                d[(py * IW + px) * 4 + c] = Math.round((hBlend + vBlend) / 2);
+          const inpaintRegion = (rx0, ry0, size) => {
+            if (rx0 < 1 || ry0 < 1 || rx0 + size > IW - 1 || ry0 + size > IH - 1) return;
+            for (let i = 0; i < size; i++) {
+              for (let j = 0; j < size; j++) {
+                const px = rx0 + i, py = ry0 + j;
+                const tH = size > 1 ? i / (size - 1) : 0.5;
+                const tV = size > 1 ? j / (size - 1) : 0.5;
+                const kL = (py * IW + (rx0 - 1)) * 4;
+                const kR = (py * IW + (rx0 + size)) * 4;
+                const kT = ((ry0 - 1) * IW + px) * 4;
+                const kB = ((ry0 + size) * IW + px) * 4;
+                const k  = (py * IW + px) * 4;
+                for (let c = 0; c < 3; c++) {
+                  const h = d[kL+c] * (1 - tH) + d[kR+c] * tH;
+                  const v = d[kT+c] * (1 - tV) + d[kB+c] * tV;
+                  d[k+c] = Math.round((h + v) / 2);
+                }
+                d[k+3] = 255;
               }
-              d[(py * IW + px) * 4 + 3] = 255;
             }
+          };
+
+          const isLarge = IW > 1024 && IH > 1024;
+          if (isLarge) {
+            // V2 large: 96×96 at margin 192 from each edge → top-left at W-288, H-288
+            inpaintRegion(IW - 288, IH - 288, 96);
+          } else {
+            // V2 small: 36×36, margin scaled from canonical source resolution
+            const longSide  = Math.max(IW, IH);
+            const shortSide = Math.min(IW, IH);
+            const srcLong = shortSide >= 566 ? 2752 : shortSide >= 550 ? 2816 : 2848;
+            const margin = Math.round(192 * longSide / srcLong);
+            inpaintRegion(IW - margin - 36, IH - margin - 36, 36);
           }
+
           ctx.putImageData(imgData, 0, 0);
           resolve(canvas.toDataURL('image/jpeg', 0.92));
         };
