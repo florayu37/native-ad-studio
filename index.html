@@ -676,11 +676,30 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
 
     // ─── GEMINI IMAGE GENERATION ─────────────────────────────────────────────
 
-    // Call Imagen 4 Fast (free tier: 25 RPD) and return base64 PNG data URL.
-    // Uses the `:predict` endpoint with instances[] format — different from Gemini's :generateContent.
-    async function callGeminiImageGen(prompt, apiKey) {
+    // Auto-discover the first available Imagen model for this API key.
+    // Cached after first call so we don't fetch the model list on every generate.
+    let _imagenModelCache = null;
+    async function resolveImagenModel(apiKey) {
+      if (_imagenModelCache) return _imagenModelCache;
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-ultra-generate-001:predict?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}&pageSize=200`
+      );
+      if (!res.ok) throw new Error('Could not list models to find Imagen');
+      const data = await res.json();
+      const candidates = (data.models || [])
+        .filter(m => /imagen/i.test(m.name) && (m.supportedGenerationMethods || []).includes('predict'))
+        .map(m => m.name.replace('models/', ''));
+      if (!candidates.length) throw new Error('No Imagen models available for your API key. Ensure billing is enabled in Google AI Studio.');
+      _imagenModelCache = candidates[0];
+      return _imagenModelCache;
+    }
+
+    // Call the best available Imagen model and return a base64 PNG data URL.
+    // Uses the :predict endpoint with instances[] (Imagen format, not Gemini generateContent).
+    async function callGeminiImageGen(prompt, apiKey) {
+      const model = await resolveImagenModel(apiKey);
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:predict?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -691,6 +710,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
         }
       );
       if (!res.ok) {
+        _imagenModelCache = null; // clear cache so next attempt re-discovers
         const err = await res.json().catch(() => ({}));
         throw new Error(err?.error?.message || `Imagen API error ${res.status}`);
       }
