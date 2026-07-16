@@ -1019,9 +1019,6 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
                   <Input label="Pexels API Key" value={local.pexelsApiKey || ''} onChange={v => set('pexelsApiKey', v)}
                     placeholder="your-pexels-api-key" type="password"
                     hint="pexels.com/api — free, enables Pexels stock image search" />
-                  <Input label="Flickr API Key" value={local.flickrApiKey || ''} onChange={v => set('flickrApiKey', v)}
-                    placeholder="your-flickr-api-key" type="password"
-                    hint="flickr.com/services/apps — free, enables White House Flickr search" />
                 </div>
               </div>
               <div className="border-t border-slate-100 pt-4">
@@ -1676,7 +1673,6 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       { id: 'wikimedia', label: 'Wikimedia Commons', color: '#3b82f6' },
       { id: 'pixabay',   label: 'Pixabay',           color: '#2563eb' },
       { id: 'pexels',    label: 'Pexels',            color: '#059669' },
-      { id: 'flickr',    label: 'White House Flickr', color: '#dc2626' },
     ];
 
     async function searchWikimedia(q) {
@@ -1731,25 +1727,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       }));
     }
 
-    async function searchFlickrWH(q, apiKey) {
-      if (!apiKey) throw new Error('Add a Flickr API key in Settings to search White House Flickr.');
-      const res = await fetch(
-        `https://api.flickr.com/services/rest/?method=flickr.photos.search&user_id=35591378%40N03&text=${encodeURIComponent(q)}&format=json&nojsoncallback=1&api_key=${apiKey}&per_page=12&extras=url_m%2Curl_l%2Ctitle&sort=relevance`
-      );
-      if (!res.ok) throw new Error(`Flickr error ${res.status}`);
-      const data = await res.json();
-      if (data.stat === 'fail') throw new Error(data.message || 'Flickr API error');
-      return (data.photos?.photo || [])
-        .filter(p => p.url_m)
-        .map(p => ({
-          url: p.url_l || p.url_m,
-          thumb: p.url_m,
-          title: p.title || 'White House photo',
-          source: 'flickr',
-        }));
-    }
-
-    function StockImageFinder({ brief, config, onAddFile }) {
+function StockImageFinder({ brief, config, onAddFile }) {
       const [sources, setSources] = useState(new Set(['wikimedia']));
       const [query, setQuery] = useState(brief?.offerName || '');
       const [loading, setLoading] = useState(false);
@@ -1772,7 +1750,6 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
           sources.has('wikimedia') ? searchWikimedia(query).catch(e => { errs.push('Wikimedia: ' + e.message); return []; }) : [],
           sources.has('pixabay')   ? searchPixabay(query, config.pixabayApiKey).catch(e => { errs.push(e.message); return []; }) : [],
           sources.has('pexels')    ? searchPexels(query, config.pexelsApiKey).catch(e => { errs.push(e.message); return []; }) : [],
-          sources.has('flickr')    ? searchFlickrWH(query, config.flickrApiKey).catch(e => { errs.push(e.message); return []; }) : [],
         ]);
         setResults(all.flat());
         setErrors(errs);
@@ -1802,7 +1779,6 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
         wikimedia: { background: '#dbeafe', color: '#1d4ed8', fontSize: 10, padding: '1px 5px', borderRadius: 4, fontWeight: 600 },
         pixabay:   { background: '#ede9fe', color: '#5b21b6', fontSize: 10, padding: '1px 5px', borderRadius: 4, fontWeight: 600 },
         pexels:    { background: '#d1fae5', color: '#065f46', fontSize: 10, padding: '1px 5px', borderRadius: 4, fontWeight: 600 },
-        flickr:    { background: '#fee2e2', color: '#991b1b', fontSize: 10, padding: '1px 5px', borderRadius: 4, fontWeight: 600 },
       }[src]);
 
       return (
@@ -1871,7 +1847,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
                     {/* source badge */}
                     <div className="absolute top-1 left-1">
                       <span style={sourceBadgeStyle(item.source)}>
-                        {item.source === 'wikimedia' ? 'WK' : item.source === 'pixabay' ? 'PB' : item.source === 'pexels' ? 'PX' : 'FL'}
+                        {item.source === 'wikimedia' ? 'WK' : item.source === 'pixabay' ? 'PB' : 'PX'}
                       </span>
                     </div>
                   </div>
@@ -2719,7 +2695,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
 
     // ─── ROOT APP ────────────────────────────────────────────────────────────
 
-    const DEFAULT_CONFIG = { anthropicKey: '', serpApiKey: '', googleClientId: '', geminiApiKey: '', pexelsApiKey: '', pixabayApiKey: '', flickrApiKey: '' };
+    const DEFAULT_CONFIG = { anthropicKey: '', serpApiKey: '', googleClientId: '', geminiApiKey: '', pexelsApiKey: '', pixabayApiKey: '' };
 
     function App() {
       const [step, setStep] = useState(1);
