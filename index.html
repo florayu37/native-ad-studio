@@ -1031,14 +1031,22 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       const [selectedAngles, setSelectedAngles] = useState(new Set());
       const [trendsFromCache, setTrendsFromCache] = useState(false);
       const [trendsCachedAt, setTrendsCachedAt] = useState(null);
+      // Captures whatever was in the angle field before the first angle card is clicked.
+      // Reset to null whenever new suggestions are generated so the baseline refreshes.
+      const angleBaseRef = React.useRef(null);
 
       const toggleAngle = (s) => {
         setSelectedAngles(prev => {
+          // Lock in the baseline on first interaction
+          if (angleBaseRef.current === null) {
+            angleBaseRef.current = brief.angle || '';
+          }
           const next = new Set(prev);
           next.has(s) ? next.delete(s) : next.add(s);
-          // Join all selected angles into the angle textarea
-          const joined = suggestions.filter(sg => next.has(sg)).join('\n\n');
-          onChange({ ...brief, angle: joined });
+          const selected = suggestions.filter(sg => next.has(sg)).join('\n\n');
+          const base = angleBaseRef.current;
+          const combined = base && selected ? `${base}\n\n${selected}` : (base || selected);
+          onChange({ ...brief, angle: combined });
           return next;
         });
       };
@@ -1057,6 +1065,8 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
         setTrendsLoading(true);
         setTrendsError('');
         setSuggestions([]);
+        setSelectedAngles(new Set());
+        angleBaseRef.current = null; // reset baseline so new suggestions append fresh
         setTrendsFromCache(false);
         setTrendsCachedAt(null);
         try {
