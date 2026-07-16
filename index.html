@@ -407,8 +407,13 @@ Return exactly 5 prompts, one per line, no numbering.`;
       }
       const data = await res.json();
       // claude-sonnet-5 returns a thinking block first; find the text block by type
-      const text = data?.content?.find(b => b.type === 'text')?.text;
-      if (!text) throw new Error(`Claude API returned no text content`);
+      const textBlock = data?.content?.find(b => b.type === 'text');
+      const text = textBlock?.text;
+      if (!text) {
+        const types = (data?.content || []).map(b => b.type).join(', ');
+        const preview = JSON.stringify(data).slice(0, 1200);
+        throw new Error(`No text block found. Block types: [${types}]. Full: ${preview}`);
+      }
       return text;
     }
 
