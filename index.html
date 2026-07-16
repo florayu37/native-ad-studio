@@ -406,7 +406,9 @@ Return exactly 5 prompts, one per line, no numbering.`;
         throw new Error(err?.error?.message || `API error ${res.status}`);
       }
       const data = await res.json();
-      return data.content[0].text;
+      const text = data?.content?.[0]?.text;
+      if (!text) throw new Error('Empty response from Claude API');
+      return text;
     }
 
     // ─── COVER IMAGE TITLE GENERATION ────────────────────────────────────────
@@ -1015,7 +1017,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
             }
           }
           const raw = await suggestAnglesViaClaude(brief.offerName, brief.audience, brief.angle, brief.landingPage, trendsData, config.anthropicKey, hasTrendsData);
-          const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 5 && l.includes('—'));
+          const lines = (raw || '').split('\n').map(l => l.trim()).filter(l => l.length > 5 && l.includes('—'));
           setSuggestions(lines.slice(0, 5));
         } catch (e) {
           setTrendsError(e.message);
