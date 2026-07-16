@@ -369,7 +369,7 @@ Campaign details:
 - Target audience: ${brief.audience}
 - Angle/message: ${brief.angle}${brief.landingPage ? `\n- Landing page: ${brief.landingPage}` : ''}
 
-Generate exactly 5 IMAGE PROMPTS for AI image generation tools (Midjourney, DALL-E, etc.):
+Generate exactly 5 IMAGE PROMPTS for AI image generation tools (Gemini, DALL-E, etc.):
 - Each prompt should be detailed and specific enough to generate a compelling native ad thumbnail
 - Describe: subject, setting, lighting, composition, emotional tone, style
 - Prompts should complement the ad's angle and appeal to the target audience
@@ -720,10 +720,29 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       return `data:${pred.mimeType || 'image/png'};base64,${pred.bytesBase64Encoded}`;
     }
 
-    // Imagen 4 uses an invisible SynthID watermark only — no visible corner mark.
-    // Keeping this as a passthrough so the rest of the pipeline is unchanged.
+    // Remove the Gemini web app watermark (small icon, bottom-right corner).
+    // Uses a neighbor-clone approach: samples the region just above the watermark
+    // and paints it over the watermark area.
     function removeGeminiWatermark(dataUrl) {
-      return Promise.resolve(dataUrl);
+      return new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width; canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          // Watermark region: bottom-right corner, ~7% of the shorter dimension
+          const wmSize = Math.round(Math.min(img.width, img.height) * 0.07);
+          const x0 = img.width - wmSize;
+          const y0 = img.height - wmSize;
+          const sampleY = Math.max(0, y0 - wmSize);
+          const patch = ctx.getImageData(x0, sampleY, wmSize, wmSize);
+          ctx.putImageData(patch, x0, y0);
+          resolve(canvas.toDataURL('image/png'));
+        };
+        img.onerror = () => resolve(dataUrl);
+        img.src = dataUrl;
+      });
     }
 
     function addPlayButtonOverlay(dataUrl) {
@@ -1878,7 +1897,7 @@ function StockImageFinder({ brief, config, onAddFile }) {
     // ─── STEP 3: IMAGES ──────────────────────────────────────────────────────
 
     function Step3({ brief, state, setState, config, onNext, onBack }) {
-      const { images, imagePrompts, accessToken, createPlayVariations } = state;
+      const { images, imagePrompts, accessToken, createPlayVariations, removeWatermark } = state;
       const [loadingPrompts, setLoadingPrompts] = useState(false);
       const [processing, setProcessing] = useState(false);
       const [driveStatus, setDriveStatus] = useState({});
@@ -1941,6 +1960,11 @@ function StockImageFinder({ brief, config, onAddFile }) {
                 const result = await processImage(img.file);
                 dataUrl = result.dataUrl; ext = result.ext; gifData = result.gifData;
               }
+            }
+
+            // ── Step 1b: remove Gemini watermark if toggled
+            if (removeWatermark && ext !== 'gif') {
+              dataUrl = await removeGeminiWatermark(dataUrl);
             }
 
             // ── Step 2: generate play-button variant if toggled and not yet done
@@ -2079,6 +2103,17 @@ function StockImageFinder({ brief, config, onAddFile }) {
                 <span className="text-xs text-slate-400">(adds ▶ overlay as extra images)</span>
               </label>
 
+              <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                <div
+                  onClick={() => setState(p => ({ ...p, removeWatermark: !p.removeWatermark }))}
+                  className={`w-9 h-5 rounded-full transition-colors flex-shrink-0 relative ${removeWatermark ? 'bg-teal-500' : 'bg-slate-200'}`}
+                >
+                  <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${removeWatermark ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                </div>
+                <span className="text-sm text-slate-700 font-medium">Remove Gemini watermark</span>
+                <span className="text-xs text-slate-400">(clones pixels over bottom-right icon)</span>
+              </label>
+
               {images.length > 0 && (
                 <div className="space-y-1.5 max-h-72 overflow-y-auto">
                   {images.map(img => {
@@ -2163,7 +2198,7 @@ function StockImageFinder({ brief, config, onAddFile }) {
               <div className="flex items-center justify-between">
                 <div>
                   <span className="text-sm font-semibold text-slate-700">Gem Image Prompts</span>
-                  <p className="text-xs text-slate-400 mt-0.5">5 AI-ready prompts for Midjourney / Gemini</p>
+                  <p className="text-xs text-slate-400 mt-0.5">5 AI-ready prompts for Gemini</p>
                 </div>
                 <Btn onClick={generatePrompts} disabled={loadingPrompts} size="sm">
                   {loadingPrompts ? <><Spinner /> Generating...</> : '✦ Generate (5)'}
@@ -2739,6 +2774,7 @@ function StockImageFinder({ brief, config, onAddFile }) {
         imagePrompts: [],
         accessToken: null,
         createPlayVariations: false,
+        removeWatermark: false,
       });
 
       // No forced settings open — API key is optional (only needed for AI generation)
