@@ -1600,11 +1600,19 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
         const outCtx = outCanvas.getContext('2d');
 
         frames.forEach((frame, i) => {
-          if (i > 0 && frames[i - 1].disposalType === 2) compCtx.clearRect(0, 0, srcW, srcH);
-          compCtx.putImageData(
+          const prevDisposal = i > 0 ? (frames[i - 1].disposalType ?? 0) : 0;
+          if (prevDisposal === 2) compCtx.clearRect(0, 0, srcW, srcH);
+          // Use a temp canvas + drawImage (source-over) instead of putImageData:
+          // putImageData replaces pixels including alpha=0, destroying the accumulated
+          // background. drawImage composites correctly, preserving background where
+          // the frame is transparent (delta frames / partial updates).
+          const tmpC = document.createElement('canvas');
+          tmpC.width = frame.dims.width; tmpC.height = frame.dims.height;
+          tmpC.getContext('2d').putImageData(
             new ImageData(new Uint8ClampedArray(frame.patch), frame.dims.width, frame.dims.height),
-            frame.dims.left, frame.dims.top
+            0, 0
           );
+          compCtx.drawImage(tmpC, frame.dims.left, frame.dims.top);
           outCtx.clearRect(0, 0, targetW, targetH);
           outCtx.drawImage(compCanvas, crop.x, crop.y, crop.width, crop.height, 0, 0, targetW, targetH);
           if (withPlayButton) drawPlayButton(outCtx, targetW, targetH);
