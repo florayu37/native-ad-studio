@@ -407,7 +407,11 @@ Return exactly 5 prompts, one per line, no numbering.`;
       }
       const data = await res.json();
       const text = data?.content?.[0]?.text;
-      if (!text) throw new Error('Empty response from Claude API');
+      if (!text) {
+        // Expose enough of the response to diagnose the issue
+        const preview = JSON.stringify(data).slice(0, 300);
+        throw new Error(`Claude API returned no text. Response: ${preview}`);
+      }
       return text;
     }
 
