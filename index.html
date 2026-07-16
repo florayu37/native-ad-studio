@@ -2021,17 +2021,14 @@ function StockImageFinder({ brief, config, onAddFile, addedUrls = new Set() }) {
               dataUrl = await removeGeminiWatermark(dataUrl);
             }
 
-            // ── Step 2: generate play-button variant if toggled and not yet done
-            let playVariant = img.playVariant || null;
-            if (createPlayVariations && !playVariant) {
+            // ── Step 2: generate play-button variant if toggled
+            let playVariant = null;
+            if (createPlayVariations) {
               if (ext === 'gif' && gifData) {
                 playVariant = await processAnimatedGIF(gifData, outputSize.w, outputSize.h, true, img.manualCrop || null);
               } else {
                 playVariant = await addPlayButtonOverlay(dataUrl);
               }
-            } else if (!createPlayVariations) {
-              // Toggle was turned off — drop any existing variant
-              playVariant = null;
             }
 
             // ── Step 3: ALWAYS derive names from current image state ────────────
