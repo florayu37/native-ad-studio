@@ -2286,7 +2286,7 @@ function StockImageFinder({ brief, config, onAddFile, onRemoveUrl, addedUrls = n
                           const hasCrop = !!(img.extraCrops || {})[key];
                           return (
                             <div key={key} className="flex items-center gap-2 p-2 bg-violet-50 border border-violet-100 rounded-xl group ml-4">
-                              {ex ? <img src={ex.dataUrl} className="w-10 h-7 object-cover rounded flex-shrink-0" alt="" /> : <div className="w-10 h-7 bg-violet-100 rounded flex-shrink-0" />}
+                              {ex && <img src={ex.dataUrl} className="w-10 h-7 object-cover rounded flex-shrink-0" alt="" />}
                               <div className="flex-1 min-w-0">
                                 <p className="text-xs font-medium text-violet-700">{key}</p>
                                 <p className="text-[10px] text-violet-400">{ex ? '✓ processed' : hasCrop ? '✂ crop set' : 'auto-crop'}</p>
