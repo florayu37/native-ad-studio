@@ -587,6 +587,38 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       return canvas;
     }
 
+    function processImageToCanvas(file, targetW = 1600, targetH = 900, mime = 'image/jpeg') {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = async () => {
+          try {
+            let canvas;
+            if (window.smartcrop) {
+              const result = await smartcrop.crop(img, { width: targetW, height: targetH });
+              const c = result.topCrop;
+              canvas = document.createElement('canvas');
+              canvas.width = targetW; canvas.height = targetH;
+              const ctx = canvas.getContext('2d');
+              ctx.fillStyle = '#fff';
+              ctx.fillRect(0, 0, targetW, targetH);
+              ctx.drawImage(img, c.x, c.y, c.width, c.height, 0, 0, targetW, targetH);
+            } else {
+              canvas = centerCrop(img, targetW, targetH);
+            }
+            URL.revokeObjectURL(url);
+            resolve(canvas.toDataURL(mime, mime === 'image/jpeg' ? 0.92 : undefined));
+          } catch {
+            const canvas = centerCrop(img, targetW, targetH);
+            URL.revokeObjectURL(url);
+            resolve(canvas.toDataURL(mime, mime === 'image/jpeg' ? 0.92 : undefined));
+          }
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Failed to load image')); };
+        img.src = url;
+      });
+    }
+
     function processImageToJPEG(file, targetW = 1600, targetH = 900) {
       return new Promise((resolve, reject) => {
         const img = new Image();
@@ -912,10 +944,16 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
 
     // Unified image processor — returns { dataUrl, ext, gifData }
     async function processImage(file, targetW = 1600, targetH = 900) {
+      const isGifFile = file.type === 'image/gif' || file.name?.toLowerCase().endsWith('.gif');
       const gifData = await getAnimatedGIFData(file);
       if (gifData) {
         const dataUrl = await processAnimatedGIF(gifData, targetW, targetH);
         return { dataUrl, ext: 'gif', gifData };
+      }
+      if (isGifFile) {
+        // Static GIF or gifuct unavailable — resize via canvas and output PNG (lossless)
+        const dataUrl = await processImageToCanvas(file, targetW, targetH, 'image/png');
+        return { dataUrl, ext: 'png', gifData: null };
       }
       const dataUrl = await processImageToJPEG(file, targetW, targetH);
       return { dataUrl, ext: 'jpg', gifData: null };
@@ -1990,7 +2028,7 @@ function StockImageFinder({ brief, config, onAddFile, onRemoveUrl, addedUrls = n
         const updated = await Promise.all(images.map(async (img, imgIdx) => {
           const seqNum = String(imgIdx + 1).padStart(2, '0');
           try {
-            const isGif = img.file?.type === 'image/gif';
+            const isGif = img.file?.type === 'image/gif' || img.file?.name?.toLowerCase().endsWith('.gif');
 
             // ── Watermark-cleaned source (reused for primary + all extra sizes)
             let cleanFile = img.file;
