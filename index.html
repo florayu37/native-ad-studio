@@ -734,6 +734,36 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       { label: '300×100',  platform: 'Rumble',         w: 300,  h: 100  },
     ];
 
+    // Build a per-pixel alpha map for the Gemini sparkle icon at `size` px.
+    // Drawn as a 4-pointed star on a transparent canvas; the canvas alpha channel
+    // gives us a reasonable approximation of the watermark's opacity at each pixel.
+    // Shadow blur adds the soft-edge falloff seen in the real watermark.
+    function buildSparkleAlphaMap(size) {
+      const c = document.createElement('canvas');
+      c.width = size; c.height = size;
+      const ctx = c.getContext('2d');
+      const cx = size / 2, cy = size / 2;
+      const r  = size * 0.44;   // tip radius
+      const w  = size * 0.055;  // waist half-width (very narrow between tips)
+      ctx.clearRect(0, 0, size, size);
+      // Shadow mimics the soft glow/anti-aliasing of the real watermark edges
+      ctx.shadowColor = 'rgba(255,255,255,0.9)';
+      ctx.shadowBlur  = Math.max(1, size * 0.09);
+      ctx.fillStyle   = 'white';
+      ctx.beginPath();
+      ctx.moveTo(cx + w, cy - w);
+      ctx.quadraticCurveTo(cx + r, cy,     cx + w, cy + w);
+      ctx.quadraticCurveTo(cx,     cy + r, cx - w, cy + w);
+      ctx.quadraticCurveTo(cx - r, cy,     cx - w, cy - w);
+      ctx.quadraticCurveTo(cx,     cy - r, cx + w, cy - w);
+      ctx.closePath();
+      ctx.fill();
+      const px = ctx.getImageData(0, 0, size, size).data;
+      const alphaMap = new Uint8Array(size * size);
+      for (let i = 0; i < size * size; i++) alphaMap[i] = px[i * 4 + 3];
+      return alphaMap;
+    }
+
     function removeGeminiWatermark(dataUrl) {
       return new Promise(resolve => {
         const img = new Image();
@@ -747,39 +777,57 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
           const imgData = ctx.getImageData(0, 0, IW, IH);
           const d = imgData.data;
 
-          const inpaintRegion = (rx0, ry0, size) => {
+          // Bilinear 4-edge inpaint (fallback for near-opaque sparkle core)
+          const bilinear = (rx0, ry0, size, i, j) => {
+            const px = rx0 + i, py = ry0 + j;
+            const tH = size > 1 ? i / (size - 1) : 0.5;
+            const tV = size > 1 ? j / (size - 1) : 0.5;
+            const kL = (py * IW + (rx0 - 1)) * 4;
+            const kR = (py * IW + (rx0 + size)) * 4;
+            const kT = ((ry0 - 1) * IW + px) * 4;
+            const kB = ((ry0 + size) * IW + px) * 4;
+            const k  = (py * IW + px) * 4;
+            for (let c = 0; c < 3; c++) {
+              const h = d[kL+c] * (1 - tH) + d[kR+c] * tH;
+              const v = d[kT+c] * (1 - tV) + d[kB+c] * tV;
+              d[k+c] = Math.round((h + v) / 2);
+            }
+            d[k+3] = 255;
+          };
+
+          const removeRegion = (rx0, ry0, size) => {
             if (rx0 < 1 || ry0 < 1 || rx0 + size > IW - 1 || ry0 + size > IH - 1) return;
-            for (let i = 0; i < size; i++) {
-              for (let j = 0; j < size; j++) {
+            const alphaMap = buildSparkleAlphaMap(size);
+            for (let j = 0; j < size; j++) {
+              for (let i = 0; i < size; i++) {
+                const alpha = alphaMap[j * size + i] / 255; // 0–1
+                if (alpha < 0.02) continue; // no watermark here
                 const px = rx0 + i, py = ry0 + j;
-                const tH = size > 1 ? i / (size - 1) : 0.5;
-                const tV = size > 1 ? j / (size - 1) : 0.5;
-                const kL = (py * IW + (rx0 - 1)) * 4;
-                const kR = (py * IW + (rx0 + size)) * 4;
-                const kT = ((ry0 - 1) * IW + px) * 4;
-                const kB = ((ry0 + size) * IW + px) * 4;
                 const k  = (py * IW + px) * 4;
-                for (let c = 0; c < 3; c++) {
-                  const h = d[kL+c] * (1 - tH) + d[kR+c] * tH;
-                  const v = d[kT+c] * (1 - tV) + d[kB+c] * tV;
-                  d[k+c] = Math.round((h + v) / 2);
+                if (alpha > 0.90) {
+                  // Sparkle core too opaque to invert cleanly — use bilinear
+                  bilinear(rx0, ry0, size, i, j);
+                } else {
+                  // Reverse alpha composite: original = (final − alpha×255) / (1 − alpha)
+                  for (let c = 0; c < 3; c++) {
+                    d[k+c] = Math.round(Math.max(0, Math.min(255, (d[k+c] - alpha * 255) / (1 - alpha))));
+                  }
+                  d[k+3] = 255;
                 }
-                d[k+3] = 255;
               }
             }
           };
 
+          // GWT position formula (watermark_engine.cpp)
           const isLarge = IW > 1024 && IH > 1024;
           if (isLarge) {
-            // V2 large: 96×96 at margin 192 from each edge → top-left at W-288, H-288
-            inpaintRegion(IW - 288, IH - 288, 96);
+            removeRegion(IW - 288, IH - 288, 96);
           } else {
-            // V2 small: 36×36, margin scaled from canonical source resolution
             const longSide  = Math.max(IW, IH);
             const shortSide = Math.min(IW, IH);
             const srcLong = shortSide >= 566 ? 2752 : shortSide >= 550 ? 2816 : 2848;
             const margin = Math.round(192 * longSide / srcLong);
-            inpaintRegion(IW - margin - 36, IH - margin - 36, 36);
+            removeRegion(IW - margin - 36, IH - margin - 36, 36);
           }
 
           ctx.putImageData(imgData, 0, 0);
