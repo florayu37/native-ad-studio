@@ -2004,33 +2004,34 @@ function StockImageFinder({ brief, config, onAddFile, onRemoveUrl, addedUrls = n
               } catch(_) {}
             }
 
-            // ── Step 1: primary size ──────────────────────────────────────────
-            let dataUrl = img.processed, ext = img._ext || 'jpg', gifData = img._gifData;
-            if (!dataUrl) {
-              if (img.manualCrop) {
-                if (isGif) {
-                  if (!gifData) { gifData = await getAnimatedGIFData(img.file); }
-                  dataUrl = await processAnimatedGIF(gifData, outputSize.w, outputSize.h, false, img.manualCrop);
-                  ext = 'gif';
+            // ── Step 1: primary size (skipped if Decide is deselected) ────────
+            let dataUrl = null, ext = img._ext || 'jpg', gifData = img._gifData, playVariant = null;
+            if (outputSize) {
+              dataUrl = img.processed;
+              if (!dataUrl) {
+                if (img.manualCrop) {
+                  if (isGif) {
+                    if (!gifData) { gifData = await getAnimatedGIFData(img.file); }
+                    dataUrl = await processAnimatedGIF(gifData, outputSize.w, outputSize.h, false, img.manualCrop);
+                    ext = 'gif';
+                  } else {
+                    dataUrl = await applyManualCropToFile(cleanFile, img.manualCrop, outputSize.w, outputSize.h);
+                    ext = 'jpg';
+                  }
                 } else {
-                  dataUrl = await applyManualCropToFile(cleanFile, img.manualCrop, outputSize.w, outputSize.h);
-                  ext = 'jpg';
+                  const result = await processImage(cleanFile, outputSize.w, outputSize.h);
+                  dataUrl = result.dataUrl; ext = result.ext; gifData = result.gifData;
                 }
-              } else {
-                const result = await processImage(cleanFile, outputSize.w, outputSize.h);
-                dataUrl = result.dataUrl; ext = result.ext; gifData = result.gifData;
+              } else if (removeWatermark && ext !== 'gif') {
+                dataUrl = await removeGeminiWatermark(dataUrl);
               }
-            } else if (removeWatermark && ext !== 'gif' && img.processed) {
-              dataUrl = await removeGeminiWatermark(dataUrl);
-            }
-
-            // ── Step 2: primary play variant ──────────────────────────────────
-            let playVariant = null;
-            if (createPlayVariations) {
-              if (ext === 'gif' && gifData) {
-                playVariant = await processAnimatedGIF(gifData, outputSize.w, outputSize.h, true, img.manualCrop || null);
-              } else {
-                playVariant = await addPlayButtonOverlay(dataUrl);
+              // ── Step 2: primary play variant
+              if (createPlayVariations) {
+                if (ext === 'gif' && gifData) {
+                  playVariant = await processAnimatedGIF(gifData, outputSize.w, outputSize.h, true, img.manualCrop || null);
+                } else {
+                  playVariant = await addPlayButtonOverlay(dataUrl);
+                }
               }
             }
 
@@ -2143,8 +2144,8 @@ function StockImageFinder({ brief, config, onAddFile, onRemoveUrl, addedUrls = n
         } finally { setZipping(false); }
       };
 
-      const hasProcessed = images.some(img => img.processed);
-      const allProcessed = images.length > 0 && images.every(img => (img.processed || img.processedError) && extraSizes.every(sz => (img.extras || []).some(ex => ex.key === `${sz.w}x${sz.h}`)));
+      const hasProcessed = images.some(img => img.processed || (img.extras || []).length > 0);
+      const allProcessed = images.length > 0 && images.every(img => img.processedError || ((!outputSize || img.processed) && extraSizes.every(sz => (img.extras || []).some(ex => ex.key === `${sz.w}x${sz.h}`))));
 
       return (
         <>
@@ -2152,7 +2153,7 @@ function StockImageFinder({ brief, config, onAddFile, onRemoveUrl, addedUrls = n
           <div className="flex items-start justify-between">
             <div>
               <h2 className="text-xl font-bold text-slate-800">Images</h2>
-              <p className="text-sm text-slate-500 mt-1">Upload client images, get AI image prompts. Smart-crop to {outputSize.w}×{outputSize.h} JPEG, then download or save to Drive.</p>
+              <p className="text-sm text-slate-500 mt-1">Upload client images, get AI image prompts. {outputSize ? `Smart-crop to ${outputSize.w}×${outputSize.h} JPEG` : 'Process at selected sizes'}, then download or save to Drive.</p>
             </div>
             {images.length > 0 && <Badge color={hasProcessed ? 'emerald' : 'slate'}>{images.filter(i => i.processed).length}/{images.length} processed</Badge>}
           </div>
@@ -2202,12 +2203,19 @@ function StockImageFinder({ brief, config, onAddFile, onRemoveUrl, addedUrls = n
                 <div className="space-y-1">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-[10px] text-slate-400 font-medium">Decide:</span>
-                    {SIZE_PRESETS.filter(p => p.platform === 'Decide').map(p => (
-                      <button key={p.label}
-                        onClick={() => setState(prev => ({ ...prev, outputSize: {w: p.w, h: p.h}, images: prev.images.map(i => ({...i, processed: null, processedName: null, playVariant: null, playVariantName: null})) }))}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${outputSize.w === p.w && outputSize.h === p.h ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'}`}
-                      >{p.w}×{p.h}</button>
-                    ))}
+                    {SIZE_PRESETS.filter(p => p.platform === 'Decide').map(p => {
+                      const selected = outputSize && outputSize.w === p.w && outputSize.h === p.h;
+                      return (
+                        <button key={p.label}
+                          onClick={() => setState(prev => ({
+                            ...prev,
+                            outputSize: selected ? null : {w: p.w, h: p.h},
+                            images: prev.images.map(i => ({...i, processed: null, processedName: null, playVariant: null, playVariantName: null}))
+                          }))}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${selected ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600'}`}
+                        >{p.w}×{p.h}</button>
+                      );
+                    })}
                   </div>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-[10px] text-slate-400 font-medium">Rumble:</span>
@@ -2242,7 +2250,7 @@ function StockImageFinder({ brief, config, onAddFile, onRemoveUrl, addedUrls = n
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-medium text-slate-700 truncate">{img.processedName || img.name}</p>
                             <p className="text-xs text-slate-400">
-                              {img.processedError ? '⚠ Processing failed' : img.processed ? `✓ ${outputSize.w}×${outputSize.h} ${img._ext === 'gif' ? 'GIF' : 'JPEG'}` : img.manualCrop ? '✂ Custom crop set' : 'Original'}
+                              {img.processedError ? '⚠ Processing failed' : img.processed ? outputSize ? `✓ ${outputSize.w}×${outputSize.h} ${img._ext === 'gif' ? 'GIF' : 'JPEG'}` : '—' : img.manualCrop ? '✂ Custom crop set' : 'Original'}
                             </p>
                           </div>
                           {st === 'uploading' && <span className="text-xs text-blue-500 flex-shrink-0"><Spinner /></span>}
