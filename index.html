@@ -733,12 +733,13 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
           ctx.drawImage(img, 0, 0);
           const IW = img.naturalWidth  || img.width;
           const IH = img.naturalHeight || img.height;
-          // Newer Gemini models (3.5+) shifted the watermark ~192px inward from the corner.
+          // Newer Gemini models (3.5+): watermark CENTER is ~192px from the corner.
           // Watermark is 96×96 px (large images) or 48×48 px (small images).
+          // Top-left of fill = corner_to_center + half_size = 192 + 48 = 240px from edge.
           const wmSize = Math.min(IW, IH) >= 512 ? 96 : 48;
-          const inset  = wmSize * 2; // 192 for 96px, 96 for 48px
-          const x0 = IW - inset;
-          const y0 = IH - inset;
+          const centerDist = 192; // px from corner to watermark center
+          const x0 = IW - centerDist - Math.round(wmSize / 2);
+          const y0 = IH - centerDist - Math.round(wmSize / 2);
 
           const imgData = ctx.getImageData(0, 0, IW, IH);
           const d = imgData.data;
