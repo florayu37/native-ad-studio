@@ -2038,24 +2038,26 @@ function StockImageFinder({ brief, config, onAddFile, onRemoveUrl, addedUrls = n
             const extras = [];
             for (const sz of extraSizes) {
               const key = `${sz.w}x${sz.h}`;
-              let szDataUrl;
+              let szDataUrl, szExt = 'jpg';
               const szCrop = (img.extraCrops || {})[key];
               if (szCrop) {
                 szDataUrl = await applyManualCropToFile(cleanFile, szCrop, sz.w, sz.h);
+                // applyManualCropToFile always outputs JPEG via canvas
               } else {
                 const r = await processImage(cleanFile, sz.w, sz.h);
                 szDataUrl = r.dataUrl;
+                szExt = r.ext; // 'gif' for animated GIFs
               }
               let szPlay = null;
-              if (createPlayVariations && ext !== 'gif') {
+              if (createPlayVariations && szExt !== 'gif') {
                 szPlay = await addPlayButtonOverlay(szDataUrl);
               }
               extras.push({
                 size: sz, key,
                 dataUrl: szDataUrl,
-                name: `${offerSlug}_${dateStr}_${key}_NPB-${seqNum}.jpg`,
+                name: `${offerSlug}_${dateStr}_${key}_NPB-${seqNum}.${szExt}`,
                 playVariant: szPlay,
-                playVariantName: szPlay ? `${offerSlug}_${dateStr}_${key}_PB-${seqNum}.jpg` : null,
+                playVariantName: szPlay ? `${offerSlug}_${dateStr}_${key}_PB-${seqNum}.${szExt === 'gif' ? 'gif' : 'jpg'}` : null,
               });
             }
 
