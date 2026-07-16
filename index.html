@@ -623,16 +623,16 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
     }
 
     // Draw the white play button overlay matching the reference design:
-    // transparent interior, thick white ring, solid white triangle, drop shadow
+    // transparent interior, thin white ring, perfect equilateral triangle, drop shadow
     function drawPlayButton(ctx, w, h) {
       const cx = w / 2, cy = h / 2;
-      const radius = h / 4;           // 225px → 450px diameter on 900px image
-      const borderW = radius * 0.10;  // ring thickness
+      const radius = h / 4;            // 225px → 450px diameter on 900px image
+      const borderW = radius * 0.065;  // thin clean ring (like reference)
 
       // Drop shadow behind the ring
       ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,0.55)';
-      ctx.shadowBlur = radius * 0.5;
+      ctx.shadowColor = 'rgba(0,0,0,0.50)';
+      ctx.shadowBlur = radius * 0.45;
       ctx.shadowOffsetX = 0;
       ctx.shadowOffsetY = radius * 0.04;
       ctx.beginPath();
@@ -651,15 +651,23 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       ctx.stroke();
       ctx.restore();
 
-      // Solid white triangle, slightly right of center
-      const triH = radius * 0.50, triW = triH * 0.87, ox = radius * 0.08;
+      // Perfect equilateral triangle using circumradius geometry.
+      // For a right-pointing equilateral triangle with circumradius R:
+      //   right vertex:       (cx + R,    cy)
+      //   top-left vertex:    (cx - R/2,  cy - R*√3/2)
+      //   bottom-left vertex: (cx - R/2,  cy + R*√3/2)
+      // This gives width/height = 1.5R / (R*√3) = √3/2 ≈ 0.866 — true equilateral.
+      // ox: small rightward shift so triangle looks optically centered in the circle.
+      const triR = radius * 0.40;
+      const ox   = triR * 0.10;
+      const sq3h = triR * Math.sqrt(3) / 2;
       ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,0.20)';
-      ctx.shadowBlur = radius * 0.10;
+      ctx.shadowColor = 'rgba(0,0,0,0.18)';
+      ctx.shadowBlur = radius * 0.08;
       ctx.beginPath();
-      ctx.moveTo(cx + triW * 0.67 + ox, cy);
-      ctx.lineTo(cx - triW * 0.33 + ox, cy - triH);
-      ctx.lineTo(cx - triW * 0.33 + ox, cy + triH);
+      ctx.moveTo(cx + triR + ox,       cy);        // right vertex
+      ctx.lineTo(cx - triR / 2 + ox,  cy - sq3h); // top-left
+      ctx.lineTo(cx - triR / 2 + ox,  cy + sq3h); // bottom-left
       ctx.closePath();
       ctx.fillStyle = 'rgba(255,255,255,1.0)';
       ctx.fill();
