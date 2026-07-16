@@ -676,50 +676,34 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
 
     // ─── GEMINI IMAGE GENERATION ─────────────────────────────────────────────
 
-    // Call Gemini API and return base64 PNG data URL
+    // Call Imagen 4 Fast (free tier: 25 RPD) and return base64 PNG data URL.
+    // Uses the `:predict` endpoint with instances[] format — different from Gemini's :generateContent.
     async function callGeminiImageGen(prompt, apiKey) {
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-fast-generate-001:predict?key=${apiKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [{ parts: [{ text: `Create a high-quality native advertising image for: ${prompt}. Photorealistic, professional, no text overlays.` }] }],
-            generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
+            instances: [{ prompt: `${prompt}. Photorealistic, professional, no text overlays, native advertising image.` }],
+            parameters: { sampleCount: 1, aspectRatio: '16:9' },
           }),
         }
       );
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error?.message || `Gemini API error ${res.status}`);
+        throw new Error(err?.error?.message || `Imagen API error ${res.status}`);
       }
       const data = await res.json();
-      const imgPart = data?.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
-      if (!imgPart) throw new Error('No image in Gemini response');
-      const { mimeType, data: b64 } = imgPart.inlineData;
-      return `data:${mimeType};base64,${b64}`;
+      const pred = data?.predictions?.[0];
+      if (!pred?.bytesBase64Encoded) throw new Error('No image in Imagen response');
+      return `data:${pred.mimeType || 'image/png'};base64,${pred.bytesBase64Encoded}`;
     }
 
-    // Remove the Nano Banana / Gemini watermark (white star, bottom-right corner)
-    // Uses neighbor-clone for the watermark region — best with direct-saved PNG from Gemini
+    // Imagen 4 uses an invisible SynthID watermark only — no visible corner mark.
+    // Keeping this as a passthrough so the rest of the pipeline is unchanged.
     function removeGeminiWatermark(dataUrl) {
-      return new Promise(resolve => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          canvas.width = img.width; canvas.height = img.height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0);
-          const wmSize = Math.min(img.width, img.height) >= 512 ? 96 : 48;
-          const x0 = img.width - wmSize, y0 = img.height - wmSize;
-          // Clone from just above the watermark region
-          const sampleY = Math.max(0, y0 - wmSize);
-          const patch = ctx.getImageData(x0, sampleY, wmSize, wmSize);
-          ctx.putImageData(patch, x0, y0);
-          resolve(canvas.toDataURL('image/png'));
-        };
-        img.src = dataUrl;
-      });
+      return Promise.resolve(dataUrl);
     }
 
     function addPlayButtonOverlay(dataUrl) {
