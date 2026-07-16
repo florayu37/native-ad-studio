@@ -749,36 +749,20 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
 
           const inpaintRegion = (rx0, ry0, size) => {
             if (rx0 < 1 || ry0 < 1 || rx0 + size > IW - 1 || ry0 + size > IH - 1) return;
-            // Clone-stamp from the patch directly above the watermark area,
-            // with feathered edge blending so the seam isn't visible.
-            const FEATHER = Math.max(2, Math.round(size * 0.25));
-            for (let j = 0; j < size; j++) {
-              for (let i = 0; i < size; i++) {
+            for (let i = 0; i < size; i++) {
+              for (let j = 0; j < size; j++) {
                 const px = rx0 + i, py = ry0 + j;
+                const tH = size > 1 ? i / (size - 1) : 0.5;
+                const tV = size > 1 ? j / (size - 1) : 0.5;
+                const kL = (py * IW + (rx0 - 1)) * 4;
+                const kR = (py * IW + (rx0 + size)) * 4;
+                const kT = ((ry0 - 1) * IW + px) * 4;
+                const kB = ((ry0 + size) * IW + px) * 4;
                 const k  = (py * IW + px) * 4;
-                // Source: same x column, size rows above the watermark region
-                const srcY = Math.max(0, ry0 - size + j);
-                const kSrc = (srcY * IW + px) * 4;
-                // How far this pixel is from any edge of the patch
-                const edgeDist = Math.min(i, size - 1 - i, j, size - 1 - j);
-                if (edgeDist >= FEATHER) {
-                  // Interior: pure texture clone
-                  d[k] = d[kSrc]; d[k+1] = d[kSrc+1]; d[k+2] = d[kSrc+2];
-                } else {
-                  // Seam zone: blend clone with 4-edge bilinear to smooth transition
-                  const t = edgeDist / FEATHER; // 0 = seam edge, 1 = interior
-                  const tH = size > 1 ? i / (size - 1) : 0.5;
-                  const tV = size > 1 ? j / (size - 1) : 0.5;
-                  const kL = (py * IW + (rx0 - 1)) * 4;
-                  const kR = (py * IW + (rx0 + size)) * 4;
-                  const kT = ((ry0 - 1) * IW + px) * 4;
-                  const kB = ((ry0 + size) * IW + px) * 4;
-                  for (let c = 0; c < 3; c++) {
-                    const h = d[kL+c] * (1 - tH) + d[kR+c] * tH;
-                    const v = d[kT+c] * (1 - tV) + d[kB+c] * tV;
-                    const bilinear = (h + v) / 2;
-                    d[k+c] = Math.round(d[kSrc+c] * t + bilinear * (1 - t));
-                  }
+                for (let c = 0; c < 3; c++) {
+                  const h = d[kL+c] * (1 - tH) + d[kR+c] * tH;
+                  const v = d[kT+c] * (1 - tV) + d[kB+c] * tV;
+                  d[k+c] = Math.round((h + v) / 2);
                 }
                 d[k+3] = 255;
               }
