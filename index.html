@@ -2055,6 +2055,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
         <div className="flex items-center gap-2 flex-1" onClick={e => e.stopPropagation()}>
           <input ref={ref} value={text} onChange={e => setText(e.target.value)}
             className="flex-1 text-sm border border-indigo-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            style={{background:'var(--bg-input,#fff)', color:'var(--text,#0f172a)'}}
             onKeyDown={e => { if (e.key === 'Enter') onSave(text); if (e.key === 'Escape') onCancel(); }} />
           <span className={`text-xs font-mono ${charClass(text.length, 100)}`}>{text.length}/100</span>
           <button onClick={() => onSave(text)} className="text-xs text-emerald-600 font-medium hover:text-emerald-700">Save</button>
