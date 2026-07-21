@@ -3181,7 +3181,7 @@ function StockImageFinder({ brief, config, onAddFile, onRemoveUrl, addedUrls = n
         description: traits.description || '—',
         cta: traits.cta === 'Other' ? traits.ctaOther || '—' : traits.cta || '—',
         quality: traits.quality || '—',
-        isPolitical: traits.isPolitical || 'No',
+        isPolitical: traits.isPolitical || 'Not Political',
       };
     }
 
@@ -3274,7 +3274,7 @@ function StockImageFinder({ brief, config, onAddFile, onRemoveUrl, addedUrls = n
         cta: 'Learn More',
         ctaOther: '',
         quality: 'Green',
-        isPolitical: 'No',
+        isPolitical: 'Not Political',
       });
       const [copied, setCopied] = useState(false);
       // imageTitles: { [imgId]: 'Cover Title' }
@@ -3427,7 +3427,7 @@ function StockImageFinder({ brief, config, onAddFile, onRemoveUrl, addedUrls = n
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Is Political</label>
                 <div className="flex gap-2">
-                  {['Yes', 'No'].map(v => (
+                  {['Not Political', 'Right', 'Left', 'Moderate'].map(v => (
                     <button key={v} onClick={() => set('isPolitical', v)}
                       className={`flex-1 text-sm px-3 py-2 rounded-lg border font-medium transition-all ${
                         traits.isPolitical === v ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
