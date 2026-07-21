@@ -2094,7 +2094,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
           setState(p => ({
             ...p,
             trafficHeadlines: raw.split('\n').map(l => l.trim()).filter(l => l.length > 5),
-            universalDesc: descRaw.trim().slice(0, 200),
+            universalDesc: descRaw.trim().slice(0, 120),
           }));
         } catch (e) { setError(e.message); }
         finally { setLoadingTraffic(false); }
@@ -2111,7 +2111,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
           setState(p => ({
             ...p,
             pollHeadlines: raw.split('\n').map(l => l.trim()).filter(l => l.length > 5),
-            universalDesc: descRaw.trim().slice(0, 200),
+            universalDesc: descRaw.trim().slice(0, 120),
           }));
         } catch (e) { setError(e.message); }
         finally { setLoadingPoll(false); }
@@ -2130,7 +2130,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
             ...p,
             trafficHeadlines: trafficRaw.split('\n').map(l => l.trim()).filter(l => l.length > 5),
             pollHeadlines: pollRaw.split('\n').map(l => l.trim()).filter(l => l.length > 5),
-            universalDesc: descRaw.trim().slice(0, 200),
+            universalDesc: descRaw.trim().slice(0, 120),
           }));
         } catch (e) { setError(e.message); }
         finally { setLoadingAll(false); }
@@ -2213,7 +2213,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
               <Badge color="amber">max 120 chars</Badge>
               {universalDesc && <span className={`text-xs font-mono ${charClass(universalDesc.length, 120)}`}>{universalDesc.length}/120</span>}
             </div>
-            <input value={universalDesc} onChange={e => setState(p => ({ ...p, universalDesc: e.target.value }))}
+            <input value={universalDesc} maxLength={120} onChange={e => setState(p => ({ ...p, universalDesc: e.target.value }))}
               placeholder="Acts as a bridge between your headlines and landing page..."
               maxLength={150}
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white placeholder-slate-300" />
