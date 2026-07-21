@@ -1267,14 +1267,35 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       return canvas;
     }
 
-    function processImageToCanvas(file, targetW = 1600, targetH = 900, mime = 'image/jpeg') {
+    // Returns true if the image already matches the target aspect ratio (within 1%)
+    // — in that case we skip cropping and just scale.
+    function matchesAspect(img, targetW, targetH) {
+      const srcAspect = img.width / img.height;
+      const tgtAspect = targetW / targetH;
+      return Math.abs(srcAspect - tgtAspect) / tgtAspect < 0.01;
+    }
+
+    function scaleToFit(img, targetW, targetH, mime = 'image/jpeg') {
+      const canvas = document.createElement('canvas');
+      canvas.width = targetW; canvas.height = targetH;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, targetW, targetH);
+      ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, targetW, targetH);
+      return canvas;
+    }
+
+        function processImageToCanvas(file, targetW = 1600, targetH = 900, mime = 'image/jpeg') {
       return new Promise((resolve, reject) => {
         const img = new Image();
         const url = URL.createObjectURL(file);
         img.onload = async () => {
           try {
             let canvas;
-            if (window.smartcrop) {
+            if (matchesAspect(img, targetW, targetH)) {
+              // Already correct aspect ratio — skip crop, just scale
+              canvas = scaleToFit(img, targetW, targetH, mime);
+            } else if (window.smartcrop) {
               const result = await smartcrop.crop(img, { width: targetW, height: targetH });
               const c = result.topCrop;
               canvas = document.createElement('canvas');
@@ -1289,7 +1310,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
             URL.revokeObjectURL(url);
             resolve(canvas.toDataURL(mime, mime === 'image/jpeg' ? 0.92 : undefined));
           } catch {
-            const canvas = centerCrop(img, targetW, targetH);
+            const canvas = matchesAspect(img, targetW, targetH) ? scaleToFit(img, targetW, targetH, mime) : centerCrop(img, targetW, targetH);
             URL.revokeObjectURL(url);
             resolve(canvas.toDataURL(mime, mime === 'image/jpeg' ? 0.92 : undefined));
           }
@@ -1306,7 +1327,10 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
         img.onload = async () => {
           try {
             let canvas;
-            if (window.smartcrop) {
+            if (matchesAspect(img, targetW, targetH)) {
+              // Already correct aspect ratio — skip crop, just scale
+              canvas = scaleToFit(img, targetW, targetH);
+            } else if (window.smartcrop) {
               // Smart content-aware crop
               const result = await smartcrop.crop(img, { width: targetW, height: targetH });
               const c = result.topCrop;
@@ -1324,7 +1348,7 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
             resolve(canvas.toDataURL('image/jpeg', 0.92));
           } catch {
             // If smartcrop errors, fall back gracefully
-            const canvas = centerCrop(img, targetW, targetH);
+            const canvas = matchesAspect(img, targetW, targetH) ? scaleToFit(img, targetW, targetH) : centerCrop(img, targetW, targetH);
             URL.revokeObjectURL(url);
             resolve(canvas.toDataURL('image/jpeg', 0.92));
           }
@@ -1569,6 +1593,9 @@ Return exactly 5 angles, one per line. No numbering, no extra text.`;
       let crop;
       if (manualCrop) {
         crop = { x: manualCrop.x, y: manualCrop.y, width: manualCrop.w, height: manualCrop.h };
+      } else if (Math.abs(srcW / srcH - targetW / targetH) / (targetW / targetH) < 0.01) {
+        // Already correct aspect ratio — use full frame, no crop
+        crop = { x: 0, y: 0, width: srcW, height: srcH };
       } else if (window.smartcrop) {
         const result = await smartcrop.crop(firstCanvas, { width: targetW, height: targetH });
         crop = result.topCrop;
